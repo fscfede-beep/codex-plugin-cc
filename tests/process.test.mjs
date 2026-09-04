@@ -1,14 +1,56 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { terminateProcessTree } from "../plugins/codex/scripts/lib/process.mjs";
+import { binaryAvailable, commandWithWindowsShim, terminateProcessTree } from "../plugins/codex/scripts/lib/process.mjs";
+
+
+test("commandWithWindowsShim avoids shell:true on Windows", () => {
+  assert.deepEqual(
+    commandWithWindowsShim("codex", ["app-server"], {
+      platform: "win32",
+      comspec: "C:\\Windows\\System32\\cmd.exe"
+    }),
+    {
+      command: "C:\\Windows\\System32\\cmd.exe",
+      args: ["/d", "/s", "/c", "call", "codex", "app-server"],
+      shell: false
+    }
+  );
+});
+
+test("binaryAvailable uses cmd.exe explicitly for Windows command shims", () => {
+  let captured = null;
+  const outcome = binaryAvailable("npm", ["--version"], {
+    platform: "win32",
+    comspec: "C:\\Windows\\System32\\cmd.exe",
+    runCommandImpl(command, args, options) {
+      captured = { command, args, options };
+      return {
+        command,
+        args,
+        status: 0,
+        signal: null,
+        stdout: "11.16.0\n",
+        stderr: "",
+        error: null
+      };
+    }
+  });
+
+  assert.deepEqual(captured, {
+    command: "C:\\Windows\\System32\\cmd.exe",
+    args: ["/d", "/s", "/c", "call", "npm", "--version"],
+    options: { cwd: undefined, env: undefined, shell: false }
+  });
+  assert.deepEqual(outcome, { available: true, detail: "11.16.0" });
+});
 
 test("terminateProcessTree uses taskkill on Windows", () => {
   let captured = null;
   const outcome = terminateProcessTree(1234, {
     platform: "win32",
-    runCommandImpl(command, args) {
-      captured = { command, args };
+    runCommandImpl(command, args, options) {
+      captured = { command, args, options };
       return {
         command,
         args,
@@ -26,7 +68,8 @@ test("terminateProcessTree uses taskkill on Windows", () => {
 
   assert.deepEqual(captured, {
     command: "taskkill",
-    args: ["/PID", "1234", "/T", "/F"]
+    args: ["/PID", "1234", "/T", "/F"],
+    options: { cwd: undefined, env: undefined, shell: false }
   });
   assert.equal(outcome.delivered, true);
   assert.equal(outcome.method, "taskkill");
