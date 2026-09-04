@@ -4,6 +4,7 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { terminateProcessTree } from "./lib/process.mjs";
+import { reconcileJobLiveness } from "./lib/job-control.mjs";
 import { BROKER_ENDPOINT_ENV } from "./lib/app-server.mjs";
 import {
   clearBrokerSession,
@@ -57,7 +58,8 @@ function cleanupSessionJobs(cwd, sessionId) {
   }
 
   for (const job of removedJobs) {
-    const stillRunning = job.status === "queued" || job.status === "running";
+    const reconciled = reconcileJobLiveness(job);
+    const stillRunning = reconciled.status === "queued" || reconciled.status === "running";
     if (!stillRunning) {
       continue;
     }

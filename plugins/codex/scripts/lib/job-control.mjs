@@ -48,7 +48,7 @@ export function reconcileJobLiveness(job, options = {}) {
   }
 }
 
-function reconcileJobsLiveness(jobs, options = {}) {
+export function reconcileJobsLiveness(jobs, options = {}) {
   return jobs.map((job) => reconcileJobLiveness(job, options));
 }
 
