@@ -2096,8 +2096,10 @@ test("stop hook does not block when Codex is unavailable even if the review gate
   run("git", ["add", "README.md"], { cwd: repo });
   run("git", ["commit", "-m", "init"], { cwd: repo });
 
+  const codexHome = makeTempDir();
   const setup = run(process.execPath, [SCRIPT, "setup", "--enable-review-gate", "--json"], {
-    cwd: repo
+    cwd: repo,
+    env: { ...process.env, CODEX_HOME: codexHome }
   });
   assert.equal(setup.status, 0, setup.stderr);
 
@@ -2105,6 +2107,7 @@ test("stop hook does not block when Codex is unavailable even if the review gate
     cwd: repo,
     env: {
       ...process.env,
+      CODEX_HOME: codexHome,
       PATH: ""
     },
     input: JSON.stringify({ cwd: repo })
