@@ -227,6 +227,20 @@ test("background task persists its bootstrap record before spawning the worker",
   assert.ok(trackedBody.indexOf("try {") < trackedBody.indexOf("upsertJob"));
 });
 
+test("cancel publishes its durable request marker before awaiting the app-server", () => {
+  const source = read("scripts/codex-companion.mjs");
+  const start = source.indexOf("async function handleCancel");
+  const end = source.indexOf("\nasync function main", start);
+  const body = source.slice(start, end);
+  const markerWrite = body.indexOf("markJobCancellationRequested");
+  const interrupt = body.indexOf("await interruptAppServerTurn");
+  const reread = body.indexOf("readStoredJob");
+  const terminate = body.indexOf("terminateProcessTree(latestJob.pid");
+  assert.ok(markerWrite >= 0 && markerWrite < reread);
+  assert.ok(markerWrite < interrupt);
+  assert.ok(reread < terminate);
+});
+
 test("setup command can offer Codex install and still points users to codex login", () => {
   const setup = read("commands/setup.md");
   const readme = fs.readFileSync(path.join(ROOT, "README.md"), "utf8");

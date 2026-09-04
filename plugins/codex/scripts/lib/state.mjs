@@ -108,6 +108,7 @@ export function saveState(cwd, state) {
       continue;
     }
     removeJobFile(resolveJobFile(cwd, job.id));
+    removeFileIfExists(resolveJobCancellationFile(cwd, job.id));
     removeFileIfExists(job.logFile);
   }
 
@@ -188,4 +189,19 @@ export function resolveJobLogFile(cwd, jobId) {
 export function resolveJobFile(cwd, jobId) {
   ensureStateDir(cwd);
   return path.join(resolveJobsDir(cwd), `${jobId}.json`);
+}
+
+export function resolveJobCancellationFile(cwd, jobId) {
+  ensureStateDir(cwd);
+  return path.join(resolveJobsDir(cwd), `${jobId}.cancelled`);
+}
+
+export function markJobCancellationRequested(cwd, jobId) {
+  const marker = resolveJobCancellationFile(cwd, jobId);
+  fs.writeFileSync(marker, "cancel requested\n", "utf8");
+  return marker;
+}
+
+export function isJobCancellationRequested(cwd, jobId) {
+  return fs.existsSync(resolveJobCancellationFile(cwd, jobId));
 }

@@ -30,6 +30,7 @@ import {
   generateJobId,
   getConfig,
   listJobs,
+  markJobCancellationRequested,
   setConfig,
   upsertJob,
   writeJobFile
@@ -973,9 +974,11 @@ async function handleCancel(argv) {
   const cwd = resolveCommandCwd(options);
   const reference = positionals[0] ?? "";
   const { workspaceRoot, job } = resolveCancelableJob(cwd, reference, { env: process.env });
+  markJobCancellationRequested(workspaceRoot, job.id);
   const existing = readStoredJob(workspaceRoot, job.id) ?? {};
-  const threadId = existing.threadId ?? job.threadId ?? null;
-  const turnId = existing.turnId ?? job.turnId ?? null;
+  const latestJob = { ...job, ...existing };
+  const threadId = latestJob.threadId ?? null;
+  const turnId = latestJob.turnId ?? null;
 
   const interrupt = await interruptAppServerTurn(cwd, { threadId, turnId });
   if (interrupt.attempted) {
@@ -987,8 +990,8 @@ async function handleCancel(argv) {
     );
   }
 
-  terminateProcessTree(job.pid ?? Number.NaN);
-  appendLogLine(job.logFile, "Cancelled by user.");
+  terminateProcessTree(latestJob.pid ?? Number.NaN);
+  appendLogLine(latestJob.logFile ?? job.logFile, "Cancelled by user.");
 
   const completedAt = nowIso();
   const nextJob = {

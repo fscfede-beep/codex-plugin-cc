@@ -993,6 +993,7 @@ test("cancelled queued task is never reclaimed by a late-starting worker", () =>
   const cancelled = run("node", [SCRIPT, "cancel", jobId, "--json"], { cwd: repo, env });
   assert.equal(cancelled.status, 0, cancelled.stderr);
   assert.equal(JSON.parse(cancelled.stdout).status, "cancelled");
+  assert.equal(fs.existsSync(path.join(jobsDir, `${jobId}.cancelled`)), true);
   const worker = run("node", [SCRIPT, "task-worker", "--cwd", repo, "--job-id", jobId], { cwd: repo, env });
   assert.equal(worker.status, 0, worker.stderr);
   assert.equal(fs.existsSync(fakeStatePath), false);

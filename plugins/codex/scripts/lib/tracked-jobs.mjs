@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import process from "node:process";
 
-import { readJobFile, resolveJobFile, resolveJobLogFile, upsertJob, writeJobFile } from "./state.mjs";
+import { isJobCancellationRequested, readJobFile, resolveJobFile, resolveJobLogFile, upsertJob, writeJobFile } from "./state.mjs";
 
 export const SESSION_ID_ENV = "CODEX_COMPANION_SESSION_ID";
 
@@ -151,6 +151,37 @@ export async function runTrackedJob(job, runner, options = {}) {
   try {
     writeJobFile(job.workspaceRoot, job.id, runningRecord);
     upsertJob(job.workspaceRoot, runningRecord);
+    if (isJobCancellationRequested(job.workspaceRoot, job.id)) {
+      const completedAt = nowIso();
+      const cancelledRecord = {
+        ...runningRecord,
+        status: "cancelled",
+        phase: "cancelled",
+        pid: null,
+        completedAt,
+        cancelledAt: completedAt,
+        errorMessage: "Cancelled by user."
+      };
+      writeJobFile(job.workspaceRoot, job.id, cancelledRecord);
+      upsertJob(job.workspaceRoot, {
+        id: job.id,
+        status: "cancelled",
+        phase: "cancelled",
+        pid: null,
+        completedAt,
+        cancelledAt: completedAt,
+        errorMessage: "Cancelled by user."
+      });
+      appendLogLine(options.logFile ?? job.logFile ?? null, "Cancelled before task execution.");
+      return {
+        exitStatus: 0,
+        payload: { jobId: job.id, status: "cancelled" },
+        rendered: "Cancelled by user.\n",
+        summary: "Cancelled by user.",
+        threadId: null,
+        turnId: null
+      };
+    }
     const execution = await runner();
     const completionStatus = execution.exitStatus === 0 ? "completed" : "failed";
     const completedAt = nowIso();
