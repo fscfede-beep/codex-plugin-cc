@@ -76,3 +76,24 @@ test("failTrackedJobLaunch transitions a queued job to failed", () => {
   assert.match(failed.errorMessage, /spawn denied/);
   assert.equal(readJobFile(resolveJobFile(repo, jobId)).status, "failed");
 });
+
+test("failTrackedJobLaunch does not overwrite a cancelled job", () => {
+  const repo = makeTempDir();
+  initGitRepo(repo);
+  const jobId = "task-spawn-failure-after-cancel";
+  const jobFile = resolveJobFile(repo, jobId);
+  fs.writeFileSync(
+    jobFile,
+    `${JSON.stringify({ id: jobId, workspaceRoot: repo, status: "cancelled", phase: "cancelled", pid: null }, null, 2)}\n`,
+    "utf8"
+  );
+  markJobCancellationRequested(repo, jobId);
+
+  const result = failTrackedJobLaunch(
+    { id: jobId, workspaceRoot: repo, status: "queued", phase: "queued", pid: null },
+    new Error("late spawn error")
+  );
+
+  assert.equal(result.status, "cancelled");
+  assert.equal(readJobFile(jobFile).status, "cancelled");
+});

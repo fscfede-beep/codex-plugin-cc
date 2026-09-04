@@ -157,12 +157,16 @@ export function failTrackedJobLaunch(job, error) {
   if (isJobRemovalRequested(job.workspaceRoot, job.id)) {
     return { ...job, status: "removed", phase: "removed", pid: null };
   }
+  const currentJob = readStoredJobOrNull(job.workspaceRoot, job.id) ?? job;
+  if (isJobCancellationRequested(job.workspaceRoot, job.id) || currentJob.status !== "queued") {
+    return currentJob;
+  }
   const completedAt = nowIso();
   const errorMessage = `Background worker failed to start: ${error instanceof Error ? error.message : String(error)}`;
-  const failedRecord = { ...job, status: "failed", phase: "failed", pid: null, completedAt, errorMessage };
+  const failedRecord = { ...currentJob, status: "failed", phase: "failed", pid: null, completedAt, errorMessage };
   writeJobFile(job.workspaceRoot, job.id, failedRecord);
   upsertJob(job.workspaceRoot, failedRecord);
-  appendLogLine(job.logFile ?? null, errorMessage);
+  appendLogLine(currentJob.logFile ?? null, errorMessage);
   return failedRecord;
 }
 
