@@ -195,6 +195,7 @@ test("internal docs use task terminology for rescue runs", () => {
   assert.match(runtimeSkill, /codex-companion\.mjs" task "<raw arguments>"/);
   assert.match(runtimeSkill, /Use `task` for every rescue request/i);
   assert.match(runtimeSkill, /task --resume-last/i);
+  assert.match(runtimeSkill, /--resume-thread <id>/i);
   assert.match(promptingSkill, /Use `task` when the task is diagnosis/i);
   assert.match(promptRecipes, /Codex task prompts/i);
   assert.match(promptRecipes, /Use these as starting templates for Codex task prompts/i);
