@@ -49,6 +49,7 @@ import {
   createJobProgressUpdater,
   createJobRecord,
   createProgressReporter,
+  failTrackedJobLaunch,
   nowIso,
   runTrackedJob,
   SESSION_ID_ENV
@@ -669,7 +670,7 @@ async function runForegroundCommand(job, runner, options = {}) {
   return execution;
 }
 
-function spawnDetachedTaskWorker(cwd, jobId) {
+function spawnDetachedTaskWorker(cwd, jobId, onError) {
   const scriptPath = path.join(ROOT_DIR, "scripts", "codex-companion.mjs");
   const child = spawn(process.execPath, [scriptPath, "task-worker", "--cwd", cwd, "--job-id", jobId], {
     cwd,
@@ -678,7 +679,8 @@ function spawnDetachedTaskWorker(cwd, jobId) {
     stdio: "ignore",
     windowsHide: true
   });
-  child.unref();
+  child.once("error", onError);
+  child.once("spawn", () => child.unref());
   return child;
 }
 
@@ -696,7 +698,13 @@ function enqueueBackgroundTask(cwd, job, request) {
   };
   writeJobFile(job.workspaceRoot, job.id, queuedRecord);
   upsertJob(job.workspaceRoot, queuedRecord);
-  spawnDetachedTaskWorker(cwd, job.id);
+  const failSpawn = (error) => failTrackedJobLaunch(queuedRecord, error);
+  try {
+    spawnDetachedTaskWorker(cwd, job.id, failSpawn);
+  } catch (error) {
+    failSpawn(error);
+    throw error;
+  }
 
   return {
     payload: {

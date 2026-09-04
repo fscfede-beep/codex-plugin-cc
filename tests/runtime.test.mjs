@@ -1937,7 +1937,7 @@ test("session end fully cleans up jobs for the ending session", async (t) => {
   assert.equal(fs.existsSync(otherJobFile), true);
   assert.deepEqual(
     fs.readdirSync(path.dirname(otherJobFile)).sort(),
-    [path.basename(otherJobFile), path.basename(otherSessionLog)].sort()
+    [path.basename(otherJobFile), path.basename(otherSessionLog), "review-running.removed"].sort()
   );
 
   await waitFor(() => {
