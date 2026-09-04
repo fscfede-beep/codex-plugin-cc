@@ -220,6 +220,7 @@ test("transfer delegates the current Claude session directly to native import", 
     env: {
       ...buildEnv(binDir),
       HOME: home,
+      USERPROFILE: home,
       CODEX_HOME: path.join(home, ".codex"),
       CODEX_COMPANION_TRANSCRIPT_PATH: sourcePath
     }
@@ -244,6 +245,50 @@ test("transfer delegates the current Claude session directly to native import", 
   );
 });
 
+test("transfer supports CLAUDE_CONFIG_DIR and stages a temporary default-root copy", () => {
+  const home = makeTempDir();
+  const repo = path.join(home, "repo");
+  const binDir = makeTempDir();
+  const claudeConfigDir = path.join(home, ".claude-work");
+  const projectDir = path.join(claudeConfigDir, "projects", "-repo");
+  const sourcePath = path.join(projectDir, "session-alt-root.jsonl");
+  fs.mkdirSync(repo, { recursive: true });
+  fs.mkdirSync(projectDir, { recursive: true });
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(
+    sourcePath,
+    `${JSON.stringify({ type: "user", cwd: repo, message: { role: "user", content: "Transfer from relocated config." } })}\n`,
+    "utf8"
+  );
+
+  const result = run("node", [SCRIPT, "transfer", "--json"], {
+    cwd: repo,
+    env: {
+      ...buildEnv(binDir),
+      HOME: home,
+      USERPROFILE: home,
+      CODEX_HOME: path.join(home, ".codex"),
+      CLAUDE_CONFIG_DIR: claudeConfigDir,
+      CODEX_COMPANION_TRANSCRIPT_PATH: sourcePath
+    }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  const original = fs.realpathSync(sourcePath);
+  assert.equal(payload.sourcePath, original);
+
+  const fakeState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-codex-state.json"), "utf8"));
+  const importedPath = fakeState.lastExternalAgentImport.sourcePath;
+  const defaultProjects = path.join(home, ".claude", "projects");
+  const relativeImport = path.relative(defaultProjects, importedPath);
+  assert.equal(relativeImport.startsWith("..") || path.isAbsolute(relativeImport), false);
+  assert.notEqual(importedPath, original);
+  assert.equal(fs.existsSync(importedPath), false);
+  assert.equal(fs.existsSync(original), true);
+});
+
 test("transfer reports an actionable upgrade error when native import is unsupported", () => {
   const home = makeTempDir();
   const repo = path.join(home, "repo");
@@ -265,6 +310,7 @@ test("transfer reports an actionable upgrade error when native import is unsuppo
     env: {
       ...buildEnv(binDir),
       HOME: home,
+      USERPROFILE: home,
       CODEX_HOME: path.join(home, ".codex")
     }
   });
@@ -295,6 +341,7 @@ test("transfer fails visibly when native import completes without a ledger recor
     env: {
       ...buildEnv(binDir),
       HOME: home,
+      USERPROFILE: home,
       CODEX_HOME: path.join(home, ".codex")
     }
   });
@@ -320,7 +367,7 @@ test("transfer rejects sources outside the Claude projects directory", () => {
 
   const result = run("node", [SCRIPT, "transfer", "--source", sourcePath], {
     cwd: repo,
-    env: { ...buildEnv(binDir), HOME: home }
+    env: { ...buildEnv(binDir), HOME: home, USERPROFILE: home }
   });
 
   assert.notEqual(result.status, 0);
