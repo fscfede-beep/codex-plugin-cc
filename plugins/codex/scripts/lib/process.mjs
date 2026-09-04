@@ -100,7 +100,7 @@ export function terminateProcessTree(pid, options = {}) {
     }
 
     const combinedOutput = `${result.stderr}\n${result.stdout}`.trim();
-    if (!result.error && looksLikeMissingProcessMessage(combinedOutput)) {
+    if (!result.error && (result.status === 128 || looksLikeMissingProcessMessage(combinedOutput))) {
       return { attempted: true, delivered: false, method: "taskkill", result };
     }
 

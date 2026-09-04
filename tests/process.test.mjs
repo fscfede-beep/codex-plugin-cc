@@ -84,7 +84,7 @@ test("terminateProcessTree treats missing Windows processes as already stopped",
         args,
         status: 128,
         signal: null,
-        stdout: "ERROR: The process \"1234\" not found.",
+        stdout: "ERROR: no se encontró el proceso \"1234\".",
         stderr: "",
         error: null
       };
@@ -94,5 +94,5 @@ test("terminateProcessTree treats missing Windows processes as already stopped",
   assert.equal(outcome.attempted, true);
   assert.equal(outcome.method, "taskkill");
   assert.equal(outcome.result.status, 128);
-  assert.match(outcome.result.stdout, /not found/i);
+  assert.equal(outcome.delivered, false);
 });
