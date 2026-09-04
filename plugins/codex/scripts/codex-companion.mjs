@@ -850,6 +850,10 @@ async function handleTaskWorker(argv) {
   if (!storedJob) {
     throw new Error(`No stored job found for ${options["job-id"]}.`);
   }
+  if (storedJob.status !== "queued") {
+    appendLogLine(storedJob.logFile ?? null, `Background worker skipped ${storedJob.status} job.`);
+    return;
+  }
 
   const request = storedJob.request;
   if (!request || typeof request !== "object") {
