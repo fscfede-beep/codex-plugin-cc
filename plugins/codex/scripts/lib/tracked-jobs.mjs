@@ -148,10 +148,9 @@ export async function runTrackedJob(job, runner, options = {}) {
     pid: process.pid,
     logFile: options.logFile ?? job.logFile ?? null
   };
-  writeJobFile(job.workspaceRoot, job.id, runningRecord);
-  upsertJob(job.workspaceRoot, runningRecord);
-
   try {
+    writeJobFile(job.workspaceRoot, job.id, runningRecord);
+    upsertJob(job.workspaceRoot, runningRecord);
     const execution = await runner();
     const completionStatus = execution.exitStatus === 0 ? "completed" : "failed";
     const completedAt = nowIso();
