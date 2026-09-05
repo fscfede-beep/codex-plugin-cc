@@ -15,6 +15,7 @@ const VERSION_MANAGER_ENV_KEYS = new Set([
   "fnm_dir",
   "asdf_data_dir",
   "mise_data_dir",
+  "homebrew_prefix",
   "volta_home",
   "localappdata",
   "programfiles",
@@ -337,6 +338,28 @@ test("portable launcher honors custom ASDF_DATA_DIR and MISE_DATA_DIR", () => {
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }
+  }
+});
+
+test("portable launcher honors HOMEBREW_PREFIX under a minimal PATH", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-homebrew-prefix-"));
+  const emptyBin = path.join(home, "empty-bin");
+  const brewPrefix = path.join(home, "linuxbrew-prefix");
+  const binDir = path.join(brewPrefix, "bin");
+  fs.mkdirSync(emptyBin, { recursive: true });
+  fs.mkdirSync(binDir, { recursive: true });
+  const nodePath = path.join(binDir, "node");
+  fs.writeFileSync(nodePath, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "HOMEBREW_NODE:%s\\n" "$*"\n', "utf8");
+  fs.chmodSync(nodePath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), HOMEBREW_PREFIX: brewPrefix.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /HOMEBREW_NODE:/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });
 

@@ -101,8 +101,11 @@ find_managed_node() {
   fnm_dir=$(windows_path_to_posix "${FNM_DIR:-$home/.local/share/fnm}") || fnm_dir=
   asdf_dir=$(windows_path_to_posix "${ASDF_DATA_DIR:-$home/.asdf}") || asdf_dir=
   mise_dir=$(windows_path_to_posix "${MISE_DATA_DIR:-$home/.local/share/mise}") || mise_dir=
+  homebrew_prefix=$(windows_path_to_posix "${HOMEBREW_PREFIX:-}") || homebrew_prefix=
+  homebrew_node=
+  [ -n "$homebrew_prefix" ] && homebrew_node="$homebrew_prefix/bin/node"
   for candidate in \
-    /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node \
+    "$homebrew_node" /home/linuxbrew/.linuxbrew/bin/node /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node \
     "$home/.volta/bin/node" \
     "$nvm_dir"/versions/node/*/bin/node \
     "$fnm_dir"/node-versions/*/installation/bin/node \
@@ -218,7 +221,10 @@ nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
 fnm_dir=$(windows_path_to_posix "${FNM_DIR:-$home/.local/share/fnm}") || fnm_dir=
 asdf_dir=$(windows_path_to_posix "${ASDF_DATA_DIR:-$home/.asdf}") || asdf_dir=
 mise_dir=$(windows_path_to_posix "${MISE_DATA_DIR:-$home/.local/share/mise}") || mise_dir=
-for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$fnm_dir"/node-versions/*/installation/bin/node "$asdf_dir"/installs/nodejs/*/bin/node "$mise_dir"/installs/node/*/bin/node; do
+homebrew_prefix=$(windows_path_to_posix "${HOMEBREW_PREFIX:-}") || homebrew_prefix=
+homebrew_node=
+[ -n "$homebrew_prefix" ] && homebrew_node="$homebrew_prefix/bin/node"
+for candidate in "$homebrew_node" /home/linuxbrew/.linuxbrew/bin/node /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$fnm_dir"/node-versions/*/installation/bin/node "$asdf_dir"/installs/nodejs/*/bin/node "$mise_dir"/installs/node/*/bin/node; do
   add_supported_node_dir_to_path "$candidate"
 done
 add_windows_node_dirs_to_path
