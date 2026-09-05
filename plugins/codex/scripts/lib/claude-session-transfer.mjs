@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -46,6 +47,22 @@ function nearestExistingAncestor(value) {
     current = parent;
   }
   return fs.realpathSync(current);
+}
+
+function copyToExclusiveStagingPath(source, preferredPath) {
+  const parsed = path.parse(preferredPath);
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const candidate = attempt === 0
+      ? preferredPath
+      : path.join(parsed.dir, `${parsed.name}.codex-import-${randomUUID()}${parsed.ext}`);
+    try {
+      fs.copyFileSync(source, candidate, fs.constants.COPYFILE_EXCL);
+      return candidate;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error(`Cannot allocate an exclusive staging path under ${parsed.dir}`);
 }
 
 function isWithin(root, candidate) {
@@ -119,12 +136,8 @@ export function prepareClaudeSessionImport(cwd, sourcePath) {
     throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportParent}`);
   }
 
-  if (fs.existsSync(importPath)) {
-    throw new Error(`Cannot stage Claude session for Codex because the destination already exists: ${importPath}`);
-  }
-
-  fs.copyFileSync(source, importPath, fs.constants.COPYFILE_EXCL);
-  const canonicalImportPath = fs.realpathSync(importPath);
+  const stagedPath = copyToExclusiveStagingPath(source, importPath);
+  const canonicalImportPath = fs.realpathSync(stagedPath);
   if (!isWithin(canonicalDefaultRoot, canonicalImportPath)) {
     fs.unlinkSync(canonicalImportPath);
     throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportPath}`);

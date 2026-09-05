@@ -289,6 +289,34 @@ test("transfer supports CLAUDE_CONFIG_DIR and stages a temporary default-root co
   assert.equal(fs.existsSync(original), true);
 });
 
+test("transfer retries with a collision-free staged filename when the mirrored destination exists", () => {
+  const home = makeTempDir();
+  const repo = path.join(home, "repo");
+  const binDir = makeTempDir();
+  const claudeConfigDir = path.join(home, ".claude-work");
+  const projectDir = path.join(claudeConfigDir, "projects", "-repo");
+  const sourcePath = path.join(projectDir, "session-collision.jsonl");
+  const mirroredPath = path.join(home, ".claude", "projects", "-repo", "session-collision.jsonl");
+  fs.mkdirSync(repo, { recursive: true });
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.mkdirSync(path.dirname(mirroredPath), { recursive: true });
+  fs.writeFileSync(mirroredPath, "STALE-STAGING\n", "utf8");
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(sourcePath, `${JSON.stringify({ type: "user", cwd: repo, message: { role: "user", content: "Retry safely." } })}\n`, "utf8");
+
+  const result = run("node", [SCRIPT, "transfer", "--json"], {
+    cwd: repo,
+    env: { ...buildEnv(binDir), HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, ".codex"), CLAUDE_CONFIG_DIR: claudeConfigDir, CODEX_COMPANION_TRANSCRIPT_PATH: sourcePath }
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(mirroredPath, "utf8"), "STALE-STAGING\n");
+  const fakeState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-codex-state.json"), "utf8"));
+  assert.notEqual(path.resolve(fakeState.lastExternalAgentImport.sourcePath), path.resolve(mirroredPath));
+  assert.equal(fs.existsSync(fakeState.lastExternalAgentImport.sourcePath), false);
+});
+
 test("transfer rejects a staging path that escapes the default projects root through a symlink", () => {
   const home = makeTempDir();
   const repo = path.join(home, "repo");
