@@ -295,11 +295,11 @@ test("transfer rejects a staging path that escapes the default projects root thr
   const binDir = makeTempDir();
   const claudeConfigDir = path.join(home, ".claude-work");
   const projectDir = path.join(claudeConfigDir, "projects", "-repo");
-  const sourcePath = path.join(projectDir, "session-symlink.jsonl");
+  const sourcePath = path.join(projectDir, "new", "session-symlink.jsonl");
   const defaultProjects = path.join(home, ".claude", "projects");
   const escapedDir = path.join(home, "escaped-staging");
   fs.mkdirSync(repo, { recursive: true });
-  fs.mkdirSync(projectDir, { recursive: true });
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
   fs.mkdirSync(defaultProjects, { recursive: true });
   fs.mkdirSync(escapedDir, { recursive: true });
   fs.symlinkSync(escapedDir, path.join(defaultProjects, "-repo"), "junction");
@@ -314,7 +314,7 @@ test("transfer rejects a staging path that escapes the default projects root thr
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /outside.*default Claude projects root|staging.*outside/i);
-  assert.equal(fs.existsSync(path.join(escapedDir, "session-symlink.jsonl")), false);
+  assert.equal(fs.existsSync(path.join(escapedDir, "new")), false);
 });
 
 test("transfer reports an actionable upgrade error when native import is unsupported", () => {

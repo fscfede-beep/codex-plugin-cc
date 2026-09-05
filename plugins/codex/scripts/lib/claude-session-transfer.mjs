@@ -38,6 +38,16 @@ function realpathIfExists(value) {
   }
 }
 
+function nearestExistingAncestor(value) {
+  let current = value;
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+  return fs.realpathSync(current);
+}
+
 function isWithin(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
@@ -94,10 +104,17 @@ export function prepareClaudeSessionImport(cwd, sourcePath) {
 
   const relative = path.relative(sourceRoot.realRoot, source);
   const importPath = path.join(defaultProjects, relative);
-  fs.mkdirSync(path.dirname(importPath), { recursive: true });
+  fs.mkdirSync(defaultProjects, { recursive: true });
 
   const canonicalDefaultRoot = fs.realpathSync(defaultProjects);
-  const canonicalImportParent = fs.realpathSync(path.dirname(importPath));
+  const importParent = path.dirname(importPath);
+  const canonicalExistingAncestor = nearestExistingAncestor(importParent);
+  if (!canonicalExistingAncestor || (canonicalExistingAncestor !== canonicalDefaultRoot && !isWithin(canonicalDefaultRoot, canonicalExistingAncestor))) {
+    throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalExistingAncestor ?? importParent}`);
+  }
+
+  fs.mkdirSync(importParent, { recursive: true });
+  const canonicalImportParent = fs.realpathSync(importParent);
   if (canonicalImportParent !== canonicalDefaultRoot && !isWithin(canonicalDefaultRoot, canonicalImportParent)) {
     throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportParent}`);
   }
