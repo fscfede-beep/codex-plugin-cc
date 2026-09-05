@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +13,8 @@ const VERSION_MANAGER_ENV_KEYS = new Set([
   "nvm_dir",
   "nvm_symlink",
   "fnm_dir",
+  "asdf_data_dir",
+  "mise_data_dir",
   "volta_home",
   "localappdata",
   "programfiles",
@@ -301,6 +303,43 @@ test("portable launcher aligns Node and codex from a custom FNM_DIR", () => {
   }
 });
 
+
+test("portable launcher honors custom ASDF_DATA_DIR and MISE_DATA_DIR", () => {
+  const cases = [
+    { envKey: "ASDF_DATA_DIR", label: "ASDF", relative: ["installs", "nodejs", "v22.0.0", "bin"] },
+    { envKey: "MISE_DATA_DIR", label: "MISE", relative: ["installs", "node", "v22.0.0", "bin"] }
+  ];
+  for (const { envKey, label, relative } of cases) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), `codex-node-custom-${label.toLowerCase()}-`));
+    const emptyBin = path.join(home, "empty-bin");
+    const dataDir = path.join(home, `custom-${label.toLowerCase()}`);
+    const binDir = path.join(dataDir, ...relative);
+    fs.mkdirSync(emptyBin, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    const nodePath = path.join(binDir, "node");
+    fs.writeFileSync(nodePath, `#!/bin/sh\nif [ "\${1:-}" = "-e" ]; then exit 0; fi\nprintf '${label}_NODE:%s\\n' "$*"\n`, "utf8");
+    fs.chmodSync(nodePath, 0o755);
+    try {
+      const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\\\", "/"), "companion.mjs", "status", "--json"], {
+        encoding: "utf8",
+        env: {
+          ...cleanVersionManagerEnv(),
+          HOME: home.replaceAll("\\\\", "/"),
+          PATH: emptyBin.replaceAll("\\\\", "/"),
+          ASDF_DATA_DIR: "",
+          MISE_DATA_DIR: "",
+          [envKey]: dataDir.replaceAll("\\\\", "/"),
+          CODEX_COMPANION_NODE: ""
+        }
+      });
+      assert.equal(result.status, 0, `${label}: ${result.stderr}`);
+      assert.match(result.stdout, new RegExp(`${label}_NODE:`));
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+});
+
 test("portable launcher accepts CODEX_COMPANION_NODE as a native Windows path", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-configured-windows-"));
   const emptyBin = path.join(home, "empty-bin");
@@ -311,7 +350,7 @@ test("portable launcher accepts CODEX_COMPANION_NODE as a native Windows path", 
   fs.copyFileSync(process.execPath, nodePath);
   const probeName = `configured-node-probe-${process.pid}.mjs`;
   const probePath = path.join(path.dirname(LAUNCHER), probeName);
-  fs.writeFileSync(probePath, 'console.log("CONFIGURED_WINDOWS_NODE")\n', "utf8");
+  fs.writeFileSync(probePath, 'console.log("CONFIGURED_WINDOWS_NODE"); console.log("PATH:" + (process.env.PATH ?? ""));\n', "utf8");
   try {
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), probeName], {
       encoding: "utf8",
@@ -331,6 +370,7 @@ test("portable launcher accepts CODEX_COMPANION_NODE as a native Windows path", 
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /CONFIGURED_WINDOWS_NODE/);
+    assert.match(result.stdout, /PATH:.*Portable Node/i);
   } finally {
     fs.rmSync(probePath, { force: true });
     fs.rmSync(home, { recursive: true, force: true });

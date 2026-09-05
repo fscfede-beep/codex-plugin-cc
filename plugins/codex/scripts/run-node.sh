@@ -99,13 +99,15 @@ find_managed_node() {
   home=${HOME:-}
   nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
   fnm_dir=$(windows_path_to_posix "${FNM_DIR:-$home/.local/share/fnm}") || fnm_dir=
+  asdf_dir=$(windows_path_to_posix "${ASDF_DATA_DIR:-$home/.asdf}") || asdf_dir=
+  mise_dir=$(windows_path_to_posix "${MISE_DATA_DIR:-$home/.local/share/mise}") || mise_dir=
   for candidate in \
     /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node \
     "$home/.volta/bin/node" \
     "$nvm_dir"/versions/node/*/bin/node \
     "$fnm_dir"/node-versions/*/installation/bin/node \
-    "$home"/.asdf/installs/nodejs/*/bin/node \
-    "$home"/.local/share/mise/installs/node/*/bin/node; do
+    "$asdf_dir"/installs/nodejs/*/bin/node \
+    "$mise_dir"/installs/node/*/bin/node; do
     [ -x "$candidate" ] || continue
     is_supported_node "$candidate" || continue
     if [ "$require_codex" = "true" ]; then
@@ -118,9 +120,12 @@ find_managed_node() {
 }
 
 find_node() {
-  if [ -n "${CODEX_COMPANION_NODE:-}" ] && [ -x "$CODEX_COMPANION_NODE" ] && is_supported_node "$CODEX_COMPANION_NODE"; then
-    printf '%s\n' "$CODEX_COMPANION_NODE"
-    return 0
+  if [ -n "${CODEX_COMPANION_NODE:-}" ]; then
+    configured_node=$(windows_path_to_posix "$CODEX_COMPANION_NODE") || configured_node=$CODEX_COMPANION_NODE
+    if [ -x "$configured_node" ] && is_supported_node "$configured_node"; then
+      printf '%s\n' "$configured_node"
+      return 0
+    fi
   fi
 
   path_node=
@@ -211,7 +216,9 @@ PATH="$node_dir${PATH:+:$PATH}"
 home=${HOME:-}
 nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
 fnm_dir=$(windows_path_to_posix "${FNM_DIR:-$home/.local/share/fnm}") || fnm_dir=
-for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$fnm_dir"/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
+asdf_dir=$(windows_path_to_posix "${ASDF_DATA_DIR:-$home/.asdf}") || asdf_dir=
+mise_dir=$(windows_path_to_posix "${MISE_DATA_DIR:-$home/.local/share/mise}") || mise_dir=
+for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$fnm_dir"/node-versions/*/installation/bin/node "$asdf_dir"/installs/nodejs/*/bin/node "$mise_dir"/installs/node/*/bin/node; do
   add_supported_node_dir_to_path "$candidate"
 done
 add_windows_node_dirs_to_path
