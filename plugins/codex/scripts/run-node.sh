@@ -14,14 +14,21 @@ case "$0" in
 esac
 script_dir=$(CDPATH= cd -- "$script_base" && pwd)
 
+is_supported_node() {
+  "$1" -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 18 || (major === 18 && minor >= 18) ? 0 : 1)' >/dev/null 2>&1
+}
+
 find_node() {
-  if [ -n "${CODEX_COMPANION_NODE:-}" ] && [ -x "$CODEX_COMPANION_NODE" ]; then
+  if [ -n "${CODEX_COMPANION_NODE:-}" ] && [ -x "$CODEX_COMPANION_NODE" ] && is_supported_node "$CODEX_COMPANION_NODE"; then
     printf '%s\n' "$CODEX_COMPANION_NODE"
     return 0
   fi
   if command -v node >/dev/null 2>&1; then
-    command -v node
-    return 0
+    candidate=$(command -v node)
+    if is_supported_node "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
   fi
   home=${HOME:-}
   for candidate in \
@@ -32,6 +39,7 @@ find_node() {
     "$home"/.asdf/installs/nodejs/*/bin/node \
     "$home"/.local/share/mise/installs/node/*/bin/node; do
     [ -x "$candidate" ] || continue
+    is_supported_node "$candidate" || continue
     printf '%s\n' "$candidate"
     return 0
   done
@@ -39,8 +47,15 @@ find_node() {
 }
 
 node_bin=$(find_node) || {
-  echo "Codex Companion requires Node.js >=18.18. Add node to PATH or set CODEX_COMPANION_NODE to its executable path." >&2
+  echo "Codex Companion requires Node.js >=18.18. Add a supported node to PATH or set CODEX_COMPANION_NODE to its executable path." >&2
   exit 127
 }
+
+case "$node_bin" in
+  */*) node_dir=${node_bin%/*} ;;
+  *) node_dir=. ;;
+esac
+PATH="$node_dir${PATH:+:$PATH}"
+export PATH
 
 exec "$node_bin" "$script_dir/$target" "$@"
