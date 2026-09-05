@@ -136,6 +136,7 @@ Use it when you want Codex to:
 
 > [!NOTE]
 > Depending on the task and model, rescues can take a long time. With `--background`, the plugin launches a durable background worker and follows it with bounded status waits before retrieving the final result, so no single Bash call must stay attached for the whole Codex run.
+> If a waiting background rescue is interrupted, that background rescue keeps running and remains recoverable with `/codex:status` and `/codex:result`; use `/codex:cancel` when you explicitly want to stop it.
 
 It supports `--background`, `--wait`, `--resume`, and `--fresh`. If you omit `--resume` and `--fresh`, the plugin can offer to continue the latest rescue thread for this repo.
 

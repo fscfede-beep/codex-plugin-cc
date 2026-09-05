@@ -27,7 +27,7 @@ Command selection:
 - Use exactly one `task` launch per rescue handoff. Never run the Bash tool in background from this subagent.
 - The outer `/codex:rescue` command owns whether the rescue subagent runs in the background or foreground. Do not treat `--background` or `--wait` as natural-language task text.
 - For `--background`, launch `task --background --json` in a foreground Bash call, capture `jobId`, then use foreground `status "$jobId" --wait --timeout-ms 60000 --json` calls until terminal and finish with `result "$jobId" --raw`.
-- Keep each background status wait bounded to 60 seconds. The detached task worker survives between waits and remains recoverable if the wrapper is interrupted.
+- Keep each background status wait bounded to 60 seconds. The detached task worker survives between waits and remains recoverable if the wrapper is interrupted. Wrapper interruption after a `jobId` exists does not cancel it; cancellation is an explicit user action through `/codex:cancel`.
 - For `--wait` or a foreground rescue, strip the execution flag and call `task` without `--background` so the Bash call returns Codex's final stdout directly.
 - If the forwarded request includes `--model`, normalize `spark` to `gpt-5.3-codex-spark` and pass it through to `task`.
 - If the forwarded request includes `--effort`, pass it through to `task`.

@@ -24,6 +24,7 @@ Forwarding rules:
 - For a forwarded `--background` request, use the durable companion path: first run a foreground Bash call with `node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task --background --json ...` and read `jobId` from its JSON.
 - While that job is `queued` or `running`, use foreground Bash calls to `node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" status "$jobId" --wait --timeout-ms 60000 --json`. Each wait is bounded so no Bash call stays attached for the whole Codex run.
 - When the background job is terminal, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" result "$jobId" --raw` in a foreground Bash call and return that stdout exactly as-is.
+- If this wrapper is interrupted after `jobId` exists, the detached job intentionally continues; a later `/codex:status` or `/codex:result` can recover it, and only an explicit `/codex:cancel` should stop it.
 - For every other rescue, use a single foreground `Bash` call to invoke `node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task ...` without `--background`, and return that stdout exactly as-is.
 - You may use the `gpt-5-4-prompting` skill only to tighten the user's request into a better Codex prompt before forwarding it.
 - Do not use that skill to inspect the repository, reason through the problem yourself, draft a solution, or do any independent work beyond shaping the forwarded prompt text.

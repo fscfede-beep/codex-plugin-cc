@@ -40,6 +40,7 @@ Operating rules:
 
 - The subagent is transport-only. The Agent itself is the only layer allowed to be backgrounded; inside the subagent, never set Bash `run_in_background`.
 - A background rescue must use a durable `task --background --json` launch, capture its `jobId`, wait in bounded foreground calls with `status "$jobId" --wait --timeout-ms 60000 --json`, then return the stdout of `result "$jobId" --raw` exactly as-is.
+- If the waiting subagent is interrupted after a background `jobId` exists, do not cancel the detached job; it remains authoritative and recoverable through `/codex:status` and `/codex:result` until it finishes or the user explicitly runs `/codex:cancel`.
 - A foreground rescue uses one foreground Bash call to `task` without `--background` and returns that stdout as-is.
 - Return the Codex companion stdout verbatim to the user.
 - Do not paraphrase, summarize, rewrite, or add commentary before or after it.

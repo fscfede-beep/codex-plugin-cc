@@ -171,6 +171,10 @@ test("rescue command absorbs continue semantics", () => {
   assert.match(readme, /continue a previous Codex task/i);
   assert.match(readme, /durable background worker/i);
   assert.match(readme, /bounded status waits/i);
+  assert.match(rescue, /interrupted after a background `jobId` exists.*do not cancel/i);
+  assert.match(agent, /interrupted after `jobId` exists.*detached job.*continues/i);
+  assert.match(runtimeSkill, /wrapper interruption.*does not cancel/i);
+  assert.match(readme, /interrupted.*background rescue.*keeps running.*`\/codex:cancel`/i);
   assert.match(readme, /### `\/codex:setup`/);
   assert.match(readme, /### `\/codex:review`/);
   assert.match(readme, /### `\/codex:adversarial-review`/);
