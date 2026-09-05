@@ -111,3 +111,66 @@ test("portable launcher discovers Windows Node install roots under Git Bash", ()
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+
+test("portable launcher restores a configured npm global prefix for codex", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-npm-prefix-"));
+  const nodeBin = installFakeNode(home, "v22.0.0", true);
+  const prefix = path.join(home, ".npm-global");
+  const prefixBin = path.join(prefix, "bin");
+  fs.mkdirSync(prefixBin, { recursive: true });
+  const codexPath = path.join(prefixBin, "codex");
+  fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(codexPath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home.replaceAll("\\", "/"),
+        PATH: nodeBin.replaceAll("\\", "/"),
+        NPM_CONFIG_PREFIX: prefix.replaceAll("\\", "/"),
+        CODEX_COMPANION_NODE: ""
+      }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CODEX:.+[\\/]\.npm-global[\\/]bin[\\/]codex\n$/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+
+test("portable launcher restores npm prefix reported by npm config", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-npm-config-"));
+  const nodeBin = installFakeNode(home, "v22.0.0", true);
+  const prefix = path.join(home, ".npm-configured");
+  const prefixBin = path.join(prefix, "bin");
+  fs.mkdirSync(prefixBin, { recursive: true });
+  const codexPath = path.join(prefixBin, "codex");
+  fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(codexPath, 0o755);
+  const npmPath = path.join(nodeBin, "npm");
+  fs.writeFileSync(
+    npmPath,
+    `#!/bin/sh\nif [ "\${1:-}" = "prefix" ] && [ "\${2:-}" = "-g" ]; then printf '%s\\n' "${prefix.replaceAll("\\", "/")}"; exit 0; fi\nexit 1\n`,
+    "utf8"
+  );
+  fs.chmodSync(npmPath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: home.replaceAll("\\", "/"),
+        PATH: nodeBin.replaceAll("\\", "/"),
+        NPM_CONFIG_PREFIX: "",
+        CODEX_COMPANION_NODE: ""
+      }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CODEX:.+[\\/]\.npm-configured[\\/]bin[\\/]codex\n$/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

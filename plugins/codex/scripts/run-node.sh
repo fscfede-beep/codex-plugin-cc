@@ -112,6 +112,23 @@ add_supported_node_dir_to_path() {
   case ":${PATH:-}:" in *":$candidate_dir:"*) ;; *) PATH="${PATH:-}${PATH:+:}$candidate_dir" ;; esac
 }
 
+add_dir_to_path() {
+  candidate_dir=$1
+  [ -d "$candidate_dir" ] || return 0
+  case ":${PATH:-}:" in *":$candidate_dir:"*) ;; *) PATH="${PATH:-}${PATH:+:}$candidate_dir" ;; esac
+}
+
+add_npm_prefix_dirs_to_path() {
+  prefix=${NPM_CONFIG_PREFIX:-}
+  if [ -z "$prefix" ] && command -v npm >/dev/null 2>&1; then
+    prefix=$(npm prefix -g 2>/dev/null) || prefix=
+  fi
+  [ -n "$prefix" ] || return 0
+  prefix=$(windows_path_to_posix "$prefix") || return 0
+  add_dir_to_path "$prefix/bin"
+  add_dir_to_path "$prefix"
+}
+
 add_windows_node_dirs_to_path() {
   root=
   if [ -n "${NVM_SYMLINK:-}" ]; then
@@ -144,6 +161,7 @@ for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node 
   add_supported_node_dir_to_path "$candidate"
 done
 add_windows_node_dirs_to_path
+add_npm_prefix_dirs_to_path
 export PATH
 
 exec "$node_bin" "$script_dir/$target" "$@"

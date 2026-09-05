@@ -204,7 +204,7 @@ test("internal docs use task terminology for rescue runs", () => {
 
 test("hooks and deterministic commands use the portable Node launcher", () => {
   const hooks = read("hooks/hooks.json");
-  for (const relative of ["commands/status.md", "commands/result.md", "commands/cancel.md"]) {
+  for (const relative of ["commands/status.md", "commands/result.md", "commands/cancel.md", "commands/transfer.md"]) {
     const source = read(relative);
     assert.match(source, /scripts\/run-node\.sh/);
     assert.match(source, /cygpath/);
