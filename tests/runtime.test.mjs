@@ -933,20 +933,19 @@ test("background task persists its queued request before spawning the detached w
   assert.ok(upsertJob >= 0 && upsertJob < spawnWorker, "queued state must exist before worker spawn");
 });
 
-test("background task stores the spawned pid without a post-spawn state rewrite", () => {
+test("background parent does not touch mutable job state after spawning the worker", () => {
   const source = fs.readFileSync(SCRIPT, "utf8");
   const start = source.indexOf("function enqueueBackgroundTask");
   const end = source.indexOf("\nasync function handleReviewCommand", start);
   assert.ok(start >= 0 && end > start, "enqueueBackgroundTask source must be discoverable");
   const body = source.slice(start, end);
   const spawnWorker = body.indexOf("spawnDetachedTaskWorker(");
-  const pidSidecar = body.indexOf("writeJobPid(", spawnWorker);
-  const stateRewrite = body.indexOf("upsertJob(", spawnWorker);
-  const jobFileRewrite = body.indexOf("writeJobFile(", spawnWorker);
   assert.ok(spawnWorker >= 0, "detached worker must be spawned");
-  assert.ok(pidSidecar > spawnWorker, "spawned pid must be persisted after spawn");
-  assert.equal(stateRewrite, -1, "parent must not rewrite indexed state after worker spawn");
-  assert.equal(jobFileRewrite, -1, "parent must not rewrite the stored job after worker spawn");
+  const afterSpawn = body.slice(spawnWorker);
+  assert.equal(afterSpawn.includes("readStoredJob("), false, "parent must not parse the mutable job file after worker spawn");
+  assert.equal(afterSpawn.includes("writeJobFile("), false, "parent must not rewrite the job file after worker spawn");
+  assert.equal(afterSpawn.includes("upsertJob("), false, "parent must not rewrite indexed state after worker spawn");
+  assert.equal(afterSpawn.includes("writeJobPid("), false, "worker must be the sole PID-sidecar writer after spawn");
 });
 
 test("task-worker publishes its own pid before reading queued state", () => {

@@ -700,15 +700,10 @@ function enqueueBackgroundTask(cwd, job, request) {
   // becomes the PID authority when runTrackedJob records its own process.pid.
   writeJobFile(job.workspaceRoot, job.id, queuedRecord);
   upsertJob(job.workspaceRoot, queuedRecord);
-  const child = spawnDetachedTaskWorker(cwd, job.id);
-  // Keep the spawned PID out of indexed state: state.json is concurrently owned by
-  // the worker once it starts. A sidecar lets immediate cancellation find the child
-  // without racing the worker's queued -> running/completed state transitions.
-  writeJobPid(job.workspaceRoot, job.id, child.pid ?? null);
-  const afterSpawn = readStoredJob(job.workspaceRoot, job.id);
-  if (afterSpawn && afterSpawn.status !== "queued" && afterSpawn.status !== "running") {
-    removeJobPid(job.workspaceRoot, job.id);
-  }
+  // After spawn, the parent does not touch mutable job state. The worker publishes
+  // its own PID before reading queued state, while cancellation claims terminal state
+  // before PID discovery, so either side of startup is safe without a parent read/write race.
+  spawnDetachedTaskWorker(cwd, job.id);
 
   return {
     payload: {
