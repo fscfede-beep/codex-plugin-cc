@@ -923,7 +923,7 @@ test("task using the shared broker still completes when Codex spawns subagents",
 test("background task persists its queued request before spawning the detached worker", () => {
   const source = fs.readFileSync(SCRIPT, "utf8");
   const start = source.indexOf("function enqueueBackgroundTask");
-  const end = source.indexOf("\n}\n", start);
+  const end = source.indexOf("\nasync function handleReviewCommand", start);
   assert.ok(start >= 0 && end > start, "enqueueBackgroundTask source must be discoverable");
   const body = source.slice(start, end);
   const writeJob = body.indexOf("writeJobFile(");
@@ -933,19 +933,19 @@ test("background task persists its queued request before spawning the detached w
   assert.ok(upsertJob >= 0 && upsertJob < spawnWorker, "queued state must exist before worker spawn");
 });
 
-test("background task indexes the spawned pid without rewriting the queued job file", () => {
+test("background task stores the spawned pid without a post-spawn state rewrite", () => {
   const source = fs.readFileSync(SCRIPT, "utf8");
   const start = source.indexOf("function enqueueBackgroundTask");
-  const end = source.indexOf("\n}\n", start);
+  const end = source.indexOf("\nasync function handleReviewCommand", start);
   assert.ok(start >= 0 && end > start, "enqueueBackgroundTask source must be discoverable");
   const body = source.slice(start, end);
   const spawnWorker = body.indexOf("spawnDetachedTaskWorker(");
-  const pidPatch = body.indexOf("pid: child.pid ?? null", spawnWorker);
-  const statePatch = body.lastIndexOf("upsertJob(", pidPatch);
+  const pidSidecar = body.indexOf("writeJobPid(", spawnWorker);
+  const stateRewrite = body.indexOf("upsertJob(", spawnWorker);
   const jobFileRewrite = body.indexOf("writeJobFile(", spawnWorker);
   assert.ok(spawnWorker >= 0, "detached worker must be spawned");
-  assert.ok(pidPatch > spawnWorker, "spawned pid must be indexed after spawn");
-  assert.ok(statePatch > spawnWorker && statePatch < pidPatch, "pid must be merged into indexed state");
+  assert.ok(pidSidecar > spawnWorker, "spawned pid must be persisted after spawn");
+  assert.equal(stateRewrite, -1, "parent must not rewrite indexed state after worker spawn");
   assert.equal(jobFileRewrite, -1, "parent must not rewrite the stored job after worker spawn");
 });
 

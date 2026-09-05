@@ -30,9 +30,12 @@ import {
   generateJobId,
   getConfig,
   listJobs,
+  readJobPid,
+  removeJobPid,
   setConfig,
   upsertJob,
-  writeJobFile
+  writeJobFile,
+  writeJobPid
 } from "./lib/state.mjs";
 import {
   buildSingleJobSnapshot,
@@ -698,12 +701,14 @@ function enqueueBackgroundTask(cwd, job, request) {
   writeJobFile(job.workspaceRoot, job.id, queuedRecord);
   upsertJob(job.workspaceRoot, queuedRecord);
   const child = spawnDetachedTaskWorker(cwd, job.id);
-  // Merge only the spawned PID into indexed state. Do not rewrite the job file here:
-  // the worker may already have advanced it from queued to running/completed.
-  upsertJob(job.workspaceRoot, {
-    id: job.id,
-    pid: child.pid ?? null
-  });
+  // Keep the spawned PID out of indexed state: state.json is concurrently owned by
+  // the worker once it starts. A sidecar lets immediate cancellation find the child
+  // without racing the worker's queued -> running/completed state transitions.
+  writeJobPid(job.workspaceRoot, job.id, child.pid ?? null);
+  const afterSpawn = readStoredJob(job.workspaceRoot, job.id);
+  if (afterSpawn && afterSpawn.status !== "queued" && afterSpawn.status !== "running") {
+    removeJobPid(job.workspaceRoot, job.id);
+  }
 
   return {
     payload: {
@@ -876,19 +881,23 @@ async function handleTaskWorker(argv) {
       logFile: storedJob.logFile ?? null
     }
   );
-  await runTrackedJob(
-    {
-      ...storedJob,
-      workspaceRoot,
-      logFile
-    },
-    () =>
-      executeTaskRun({
-        ...request,
-        onProgress: progress
-      }),
-    { logFile }
-  );
+  try {
+    await runTrackedJob(
+      {
+        ...storedJob,
+        workspaceRoot,
+        logFile
+      },
+      () =>
+        executeTaskRun({
+          ...request,
+          onProgress: progress
+        }),
+      { logFile }
+    );
+  } finally {
+    removeJobPid(workspaceRoot, options["job-id"]);
+  }
 }
 
 async function handleStatus(argv) {
@@ -1018,7 +1027,9 @@ async function handleCancel(argv) {
     );
   }
 
-  terminateProcessTree(job.pid ?? Number.NaN);
+  const workerPid = Number.isFinite(job.pid) ? job.pid : readJobPid(workspaceRoot, job.id);
+  terminateProcessTree(workerPid ?? Number.NaN);
+  removeJobPid(workspaceRoot, job.id);
   appendLogLine(job.logFile, "Cancelled by user.");
 
   const completedAt = nowIso();
