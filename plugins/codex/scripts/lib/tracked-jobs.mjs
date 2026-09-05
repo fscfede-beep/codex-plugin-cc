@@ -166,6 +166,30 @@ export function failTrackedJobLaunch(job, error) {
   const failedRecord = { ...currentJob, status: "failed", phase: "failed", pid: null, completedAt, errorMessage };
   writeJobFile(job.workspaceRoot, job.id, failedRecord);
   upsertJob(job.workspaceRoot, failedRecord);
+
+  if (isJobRemovalRequested(job.workspaceRoot, job.id)) {
+    const jobFile = resolveJobFile(job.workspaceRoot, job.id);
+    if (fs.existsSync(jobFile)) fs.unlinkSync(jobFile);
+    removeJobFromState(job.workspaceRoot, job.id);
+    return { ...currentJob, status: "removed", phase: "removed", pid: null };
+  }
+
+  if (isJobCancellationRequested(job.workspaceRoot, job.id)) {
+    const cancelledAt = nowIso();
+    const cancelledRecord = {
+      ...currentJob,
+      status: "cancelled",
+      phase: "cancelled",
+      pid: null,
+      completedAt: cancelledAt,
+      cancelledAt,
+      errorMessage: "Cancelled by user."
+    };
+    writeJobFile(job.workspaceRoot, job.id, cancelledRecord);
+    upsertJob(job.workspaceRoot, cancelledRecord);
+    return cancelledRecord;
+  }
+
   appendLogLine(currentJob.logFile ?? null, errorMessage);
   return failedRecord;
 }

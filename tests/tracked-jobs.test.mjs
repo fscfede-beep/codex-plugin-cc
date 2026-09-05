@@ -97,3 +97,49 @@ test("failTrackedJobLaunch does not overwrite a cancelled job", () => {
   assert.equal(result.status, "cancelled");
   assert.equal(readJobFile(jobFile).status, "cancelled");
 });
+
+test("failTrackedJobLaunch preserves cancellation that wins after the initial check", () => {
+  const repo = makeTempDir();
+  initGitRepo(repo);
+  const jobId = "task-spawn-failure-races-cancel";
+  const jobFile = resolveJobFile(repo, jobId);
+  const queued = { id: jobId, workspaceRoot: repo, status: "queued", phase: "queued", pid: null };
+  fs.writeFileSync(jobFile, `${JSON.stringify(queued, null, 2)}\n`, "utf8");
+
+  const error = {
+    toString() {
+      markJobCancellationRequested(repo, jobId);
+      fs.writeFileSync(
+        jobFile,
+        `${JSON.stringify({ ...queued, status: "cancelled", phase: "cancelled" }, null, 2)}\n`,
+        "utf8"
+      );
+      return "late spawn error";
+    }
+  };
+
+  const result = failTrackedJobLaunch(queued, error);
+  assert.equal(result.status, "cancelled");
+  assert.equal(readJobFile(jobFile).status, "cancelled");
+});
+
+test("failTrackedJobLaunch preserves removal that wins after the initial check", () => {
+  const repo = makeTempDir();
+  initGitRepo(repo);
+  const jobId = "task-spawn-failure-races-removal";
+  const jobFile = resolveJobFile(repo, jobId);
+  const queued = { id: jobId, workspaceRoot: repo, status: "queued", phase: "queued", pid: null };
+  fs.writeFileSync(jobFile, `${JSON.stringify(queued, null, 2)}\n`, "utf8");
+
+  const error = {
+    toString() {
+      markJobRemovalRequested(repo, jobId);
+      fs.unlinkSync(jobFile);
+      return "late spawn error";
+    }
+  };
+
+  const result = failTrackedJobLaunch(queued, error);
+  assert.equal(result.status, "removed");
+  assert.equal(fs.existsSync(jobFile), false);
+});
