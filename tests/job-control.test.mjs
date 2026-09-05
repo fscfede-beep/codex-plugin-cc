@@ -102,3 +102,31 @@ test("buildStatusSnapshot moves a dead worker out of the active queue", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test("implicit result ignores a newer dead worker in favor of stored final output", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-job-result-"));
+  const workspace = path.join(root, "workspace");
+  const previousPluginData = process.env.CLAUDE_PLUGIN_DATA;
+  fs.mkdirSync(workspace, { recursive: true });
+  process.env.CLAUDE_PLUGIN_DATA = path.join(root, "plugin-data");
+
+  try {
+    saveState(workspace, {
+      config: { stopReviewGate: false },
+      jobs: [
+        activeJob({ sessionId: "sess-current", updatedAt: "2026-09-04T10:02:00.000Z" }),
+        { id: "task-completed", status: "completed", sessionId: "sess-current", result: { rawOutput: "done" }, updatedAt: "2026-09-04T10:01:00.000Z" }
+      ]
+    });
+    const killImpl = () => { const error = new Error("no such process"); error.code = "ESRCH"; throw error; };
+    const options = { env: { CODEX_COMPANION_SESSION_ID: "sess-current" }, killImpl };
+
+    assert.equal(resolveResultJob(workspace, null, options).job.id, "task-completed");
+    assert.equal(resolveResultJob(workspace, "task-dead-worker", options).job.status, "terminated-unknown");
+  } finally {
+    if (previousPluginData === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+    else process.env.CLAUDE_PLUGIN_DATA = previousPluginData;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

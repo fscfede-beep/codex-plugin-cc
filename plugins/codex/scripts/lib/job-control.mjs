@@ -294,7 +294,7 @@ export function resolveResultJob(cwd, reference, options = {}) {
       job.status === "completed" ||
       job.status === "failed" ||
       job.status === "cancelled" ||
-      job.status === "terminated-unknown"
+      (Boolean(reference) && job.status === "terminated-unknown")
   );
 
   if (selected) {
