@@ -23,9 +23,27 @@ windows_path_to_posix() {
   [ -n "$value" ] || return 1
   if command -v cygpath >/dev/null 2>&1; then
     cygpath -u "$value"
-  else
-    printf '%s\n' "$value"
+    return
   fi
+
+  normalized=
+  remaining=$value
+  while [ -n "$remaining" ]; do
+    char=${remaining%"${remaining#?}"}
+    remaining=${remaining#?}
+    case "$char" in
+      \\) normalized="${normalized}/" ;;
+      *) normalized="${normalized}${char}" ;;
+    esac
+  done
+  case "$normalized" in
+    [A-Za-z]:/*)
+      drive=${normalized%%:*}
+      rest=${normalized#?:}
+      printf '/%s%s\n' "$drive" "$rest"
+      ;;
+    *) printf '%s\n' "$normalized" ;;
+  esac
 }
 
 find_windows_node() {
@@ -83,10 +101,11 @@ find_node() {
     fi
   fi
   home=${HOME:-}
+  nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
   for candidate in \
     /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node \
     "$home/.volta/bin/node" \
-    "$home"/.nvm/versions/node/*/bin/node \
+    "$nvm_dir"/versions/node/*/bin/node \
     "$home"/.local/share/fnm/node-versions/*/installation/bin/node \
     "$home"/.asdf/installs/nodejs/*/bin/node \
     "$home"/.local/share/mise/installs/node/*/bin/node; do
@@ -157,7 +176,8 @@ add_windows_node_dirs_to_path() {
 case "$node_bin" in */*) node_dir=${node_bin%/*} ;; *) node_dir=. ;; esac
 PATH="$node_dir${PATH:+:$PATH}"
 home=${HOME:-}
-for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$home"/.nvm/versions/node/*/bin/node "$home"/.local/share/fnm/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
+nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
+for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$home"/.local/share/fnm/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
   add_supported_node_dir_to_path "$candidate"
 done
 add_windows_node_dirs_to_path

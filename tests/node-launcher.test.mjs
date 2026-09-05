@@ -174,3 +174,55 @@ test("portable launcher restores npm prefix reported by npm config", () => {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+
+test("portable launcher discovers Node from a custom NVM_DIR", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-custom-nvm-"));
+  const emptyBin = path.join(home, "empty-bin");
+  const nvmDir = path.join(home, "custom-nvm");
+  const binDir = path.join(nvmDir, "versions", "node", "v22.0.0", "bin");
+  fs.mkdirSync(emptyBin, { recursive: true });
+  fs.mkdirSync(binDir, { recursive: true });
+  const nodePath = path.join(binDir, "node");
+  fs.writeFileSync(nodePath, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "CUSTOM_NVM_NODE:%s\\n" "$*"\n', "utf8");
+  fs.chmodSync(nodePath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "", NVM_SYMLINK: "", VOLTA_HOME: "", LOCALAPPDATA: "", ProgramFiles: "", PROGRAMFILES: "", PROGRAMW6432: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CUSTOM_NVM_NODE:/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("portable launcher enriches PATH from a custom NVM_DIR", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-custom-nvm-path-"));
+  const systemBin = path.join(home, "system-bin");
+  const nvmDir = path.join(home, "custom-nvm");
+  const managedBin = path.join(nvmDir, "versions", "node", "v22.0.0", "bin");
+  fs.mkdirSync(systemBin, { recursive: true });
+  fs.mkdirSync(managedBin, { recursive: true });
+  const systemNode = path.join(systemBin, "node");
+  fs.writeFileSync(systemNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "SYSTEM_NODE:%s\\n" "$*"\nprintf "CODEX:%s\\n" "$(command -v codex || true)"\n', "utf8");
+  fs.chmodSync(systemNode, 0o755);
+  const managedNode = path.join(managedBin, "node");
+  fs.writeFileSync(managedNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nexit 0\n', "utf8");
+  fs.chmodSync(managedNode, 0o755);
+  const codexPath = path.join(managedBin, "codex");
+  fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(codexPath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /SYSTEM_NODE:/);
+    assert.match(result.stdout, /CODEX:.+[\\/]custom-nvm[\\/]versions[\\/]node[\\/]v22\.0\.0[\\/]bin[\\/]codex\n$/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
