@@ -23,7 +23,8 @@ function runWithMinimalPath(home) {
   const emptyBin = path.join(home, "empty-bin");
   fs.mkdirSync(emptyBin, { recursive: true });
   return spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
-    encoding: "utf8",    env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    encoding: "utf8",
+    env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
   });
 }
 
@@ -46,7 +47,8 @@ test("portable launcher skips unsupported Node versions", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-version-"));
   installFakeNode(home, "v12.22.0", false);
   installFakeNode(home, "v22.0.0", true);
-  try {    const result = runWithMinimalPath(home);
+  try {
+    const result = runWithMinimalPath(home);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /FAKE_NODE_v22\.0\.0:/);
     assert.doesNotMatch(result.stdout, /FAKE_NODE_v12\.22\.0:/);
