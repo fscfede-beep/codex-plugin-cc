@@ -949,6 +949,19 @@ test("background task stores the spawned pid without a post-spawn state rewrite"
   assert.equal(jobFileRewrite, -1, "parent must not rewrite the stored job after worker spawn");
 });
 
+test("task-worker publishes its own pid before reading queued state", () => {
+  const source = fs.readFileSync(SCRIPT, "utf8");
+  const start = source.indexOf("async function handleTaskWorker");
+  const end = source.indexOf("\nasync function handleStatus", start);
+  assert.ok(start >= 0 && end > start, "handleTaskWorker source must be discoverable");
+  const body = source.slice(start, end);
+  const publishPid = body.indexOf("writeJobPid(workspaceRoot, options[\"job-id\"], process.pid)");
+  const readJob = body.indexOf("readStoredJob(workspaceRoot, options[\"job-id\"])");
+  assert.ok(publishPid >= 0, "worker must publish its own pid during startup");
+  assert.ok(readJob >= 0, "worker must read queued state");
+  assert.ok(publishPid < readJob, "worker pid must be visible to cancellation before queued state is claimed");
+});
+
 test("task-worker does not revive a job cancelled before worker startup", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();

@@ -859,16 +859,20 @@ async function handleTaskWorker(argv) {
 
   const cwd = resolveCommandCwd(options);
   const workspaceRoot = resolveCommandWorkspace(options);
+  writeJobPid(workspaceRoot, options["job-id"], process.pid);
   const storedJob = readStoredJob(workspaceRoot, options["job-id"]);
   if (!storedJob) {
+    removeJobPid(workspaceRoot, options["job-id"]);
     throw new Error(`No stored job found for ${options["job-id"]}.`);
   }
   if (storedJob.status !== "queued") {
+    removeJobPid(workspaceRoot, options["job-id"]);
     return;
   }
 
   const request = storedJob.request;
   if (!request || typeof request !== "object") {
+    removeJobPid(workspaceRoot, options["job-id"]);
     throw new Error(`Stored job ${options["job-id"]} is missing its task request payload.`);
   }
 
