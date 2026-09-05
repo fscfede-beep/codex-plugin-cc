@@ -9,6 +9,21 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LAUNCHER = path.join(ROOT, "plugins", "codex", "scripts", "run-node.sh");
 const BASH = process.env.SHELL || (process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "/bin/bash");
+const VERSION_MANAGER_ENV_KEYS = new Set([
+  "nvm_dir",
+  "nvm_symlink",
+  "volta_home",
+  "localappdata",
+  "programfiles",
+  "programw6432"
+]);
+
+function cleanVersionManagerEnv() {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !VERSION_MANAGER_ENV_KEYS.has(key.toLowerCase()))
+  );
+}
+
 
 function installFakeNode(home, version, supported) {
   const binDir = path.join(home, ".nvm", "versions", "node", version, "bin");
@@ -24,7 +39,7 @@ function runWithMinimalPath(home) {
   fs.mkdirSync(emptyBin, { recursive: true });
   return spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
     encoding: "utf8",
-    env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
   });
 }
 
@@ -73,7 +88,7 @@ test("portable launcher keeps searching compatible toolchains for codex", () => 
   try {
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
       encoding: "utf8",
-      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /FAKE_NODE_v22\.0\.0:/);
@@ -89,6 +104,9 @@ test("portable launcher discovers Windows Node install roots under Git Bash", ()
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-windows-"));
   const emptyBin = path.join(home, "empty-bin");
   const programFiles = path.join(home, "Program Files");
+  const programFilesPosix = programFiles
+    .replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`)
+    .replaceAll("\\", "/");
   const nodeDir = path.join(programFiles, "nodejs");
   fs.mkdirSync(emptyBin, { recursive: true });
   fs.mkdirSync(nodeDir, { recursive: true });
@@ -103,7 +121,7 @@ test("portable launcher discovers Windows Node install roots under Git Bash", ()
   try {
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), probeName], {
       encoding: "utf8",
-      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), ProgramFiles: programFiles.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "", NVM_SYMLINK: "", VOLTA_HOME: "", LOCALAPPDATA: "" }
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), PROGRAMFILES: programFilesPosix, CODEX_COMPANION_NODE: "", NVM_SYMLINK: "", VOLTA_HOME: "", LOCALAPPDATA: "" }
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /WINDOWS_NODE/);
@@ -127,7 +145,7 @@ test("portable launcher restores a configured npm global prefix for codex", () =
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
       encoding: "utf8",
       env: {
-        ...process.env,
+        ...cleanVersionManagerEnv(),
         HOME: home.replaceAll("\\", "/"),
         PATH: nodeBin.replaceAll("\\", "/"),
         NPM_CONFIG_PREFIX: prefix.replaceAll("\\", "/"),
@@ -162,7 +180,7 @@ test("portable launcher restores npm prefix reported by npm config", () => {
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
       encoding: "utf8",
       env: {
-        ...process.env,
+        ...cleanVersionManagerEnv(),
         HOME: home.replaceAll("\\", "/"),
         PATH: nodeBin.replaceAll("\\", "/"),
         NPM_CONFIG_PREFIX: "",
@@ -190,7 +208,7 @@ test("portable launcher discovers Node from a custom NVM_DIR", () => {
   try {
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
       encoding: "utf8",
-      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "", NVM_SYMLINK: "", VOLTA_HOME: "", LOCALAPPDATA: "", ProgramFiles: "", PROGRAMFILES: "", PROGRAMW6432: "" }
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "", NVM_SYMLINK: "", VOLTA_HOME: "", LOCALAPPDATA: "", ProgramFiles: "", PROGRAMFILES: "", PROGRAMW6432: "" }
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /CUSTOM_NVM_NODE:/);
@@ -218,7 +236,7 @@ test("portable launcher enriches PATH from a custom NVM_DIR", () => {
   try {
     const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
       encoding: "utf8",
-      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /CUSTOM_NVM_MANAGED:/);
@@ -229,6 +247,42 @@ test("portable launcher enriches PATH from a custom NVM_DIR", () => {
   }
 });
 
+
+test("portable launcher accepts CODEX_COMPANION_NODE as a native Windows path", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-configured-windows-"));
+  const emptyBin = path.join(home, "empty-bin");
+  const portableDir = path.join(home, "Portable Node");
+  fs.mkdirSync(emptyBin, { recursive: true });
+  fs.mkdirSync(portableDir, { recursive: true });
+  const nodePath = path.join(portableDir, "node.exe");
+  fs.copyFileSync(process.execPath, nodePath);
+  const probeName = `configured-node-probe-${process.pid}.mjs`;
+  const probePath = path.join(path.dirname(LAUNCHER), probeName);
+  fs.writeFileSync(probePath, 'console.log("CONFIGURED_WINDOWS_NODE")\n', "utf8");
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), probeName], {
+      encoding: "utf8",
+      env: {
+        ...cleanVersionManagerEnv(),
+        HOME: home.replaceAll("\\", "/"),
+        PATH: emptyBin.replaceAll("\\", "/"),
+        CODEX_COMPANION_NODE: nodePath,
+        NVM_DIR: "",
+        NVM_SYMLINK: "",
+        VOLTA_HOME: "",
+        LOCALAPPDATA: "",
+        ProgramFiles: "",
+        PROGRAMFILES: "",
+        PROGRAMW6432: ""
+      }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CONFIGURED_WINDOWS_NODE/);
+  } finally {
+    fs.rmSync(probePath, { force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test("portable launcher aligns Node with the supported toolchain that contains codex", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-multi-supported-"));
