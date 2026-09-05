@@ -55,6 +55,20 @@ test("reconcileJobLiveness keeps a dead worker active when its Codex turn may st
   assert.equal(job.turnId, "turn_live");
 });
 
+test("reconcileJobLiveness keeps the turn-start response window active", () => {
+  const job = reconcileJobLiveness(activeJob({ threadId: "thr_pending", turnId: null }), {
+    killImpl() {
+      const error = new Error("no such process");
+      error.code = "ESRCH";
+      throw error;
+    }
+  });
+  assert.equal(job.status, "running");
+  assert.equal(job.phase, "worker-exited-turn-unknown");
+  assert.equal(job.pid, null);
+  assert.equal(job.workerExited, true);
+});
+
 test("reconcileJobLiveness treats EPERM as alive", () => {
   const original = activeJob();
   const job = reconcileJobLiveness(original, {

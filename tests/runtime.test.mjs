@@ -1777,6 +1777,26 @@ test("cancel with a job id can still target an active job from another Claude se
   assert.equal(state.jobs[0].status, "cancelled");
 });
 
+test("cancel fails closed when an orphaned turn has no persisted turn id", () => {
+  const workspace = makeTempDir();
+  const stateDir = resolveStateDir(workspace);
+  fs.mkdirSync(path.join(stateDir, "jobs"), { recursive: true });
+  fs.writeFileSync(path.join(stateDir, "state.json"), `${JSON.stringify({
+    version: 1, config: { stopReviewGate: false }, jobs: [{
+      id: "task-turn-pending", status: "running", title: "Codex Task", jobClass: "task",
+      sessionId: "sess-current", pid: 999999, threadId: "thr_pending",
+      updatedAt: "2099-01-01T00:00:00.000Z"
+    }]
+  }, null, 2)}
+`, "utf8");
+  const env = { ...process.env, CODEX_COMPANION_SESSION_ID: "sess-current" };
+  const result = run("node", [SCRIPT, "cancel", "task-turn-pending", "--json"], { cwd: workspace, env });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /turn id|safely interrupt|still running/i);
+  const state = JSON.parse(fs.readFileSync(path.join(stateDir, "state.json"), "utf8"));
+  assert.equal(state.jobs[0].status, "running");
+});
+
 test("cancel sends turn interrupt to the shared app-server before killing a brokered task", async () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();
@@ -1839,6 +1859,28 @@ test("cancel sends turn interrupt to the shared app-server before killing a brok
     })
   });
   assert.equal(cleanup.status, 0, cleanup.stderr);
+});
+
+test("session end preserves an orphaned turn whose worker exited", () => {
+  const workspace = makeTempDir();
+  const stateDir = resolveStateDir(workspace);
+  fs.mkdirSync(path.join(stateDir, "jobs"), { recursive: true });
+  fs.writeFileSync(path.join(stateDir, "state.json"), `${JSON.stringify({
+    version: 1, config: { stopReviewGate: false }, jobs: [{
+      id: "task-orphaned-turn", status: "running", title: "Codex Task", jobClass: "task",
+      sessionId: "sess-current", pid: 999999, threadId: "thr_pending",
+      updatedAt: "2099-01-01T00:00:00.000Z"
+    }]
+  }, null, 2)}
+`, "utf8");
+  const result = run("node", [SESSION_HOOK, "SessionEnd"], {
+    cwd: workspace, env: { ...process.env, CODEX_COMPANION_SESSION_ID: "sess-current" },
+    input: JSON.stringify({ hook_event_name: "SessionEnd", session_id: "sess-current", cwd: workspace })
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const state = JSON.parse(fs.readFileSync(path.join(stateDir, "state.json"), "utf8"));
+  assert.equal(state.jobs.length, 1);
+  assert.equal(state.jobs[0].id, "task-orphaned-turn");
 });
 
 test("session end fully cleans up jobs for the ending session", async (t) => {

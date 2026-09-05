@@ -974,6 +974,12 @@ async function handleCancel(argv) {
   const threadId = existing.threadId ?? job.threadId ?? null;
   const turnId = existing.turnId ?? job.turnId ?? null;
 
+  if (job.workerExited && threadId && !turnId) {
+    throw new Error(
+      `Cannot safely cancel ${job.id}: the worker exited after turn/start was accepted, but the turn id is not yet known. The Codex turn may still be running.`
+    );
+  }
+
   const interrupt = await interruptAppServerTurn(cwd, { threadId, turnId });
   if (interrupt.attempted) {
     appendLogLine(

@@ -42,7 +42,7 @@ export function reconcileJobLiveness(job, options = {}) {
       return job;
     }
     if (error?.code === "ESRCH") {
-      if (job.threadId && job.turnId) {
+      if (job.threadId) {
         return {
           ...job,
           status: "running",
