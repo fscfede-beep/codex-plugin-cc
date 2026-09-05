@@ -933,6 +933,74 @@ test("background task persists its queued request before spawning the detached w
   assert.ok(upsertJob >= 0 && upsertJob < spawnWorker, "queued state must exist before worker spawn");
 });
 
+test("background task indexes the spawned pid without rewriting the queued job file", () => {
+  const source = fs.readFileSync(SCRIPT, "utf8");
+  const start = source.indexOf("function enqueueBackgroundTask");
+  const end = source.indexOf("\n}\n", start);
+  assert.ok(start >= 0 && end > start, "enqueueBackgroundTask source must be discoverable");
+  const body = source.slice(start, end);
+  const spawnWorker = body.indexOf("spawnDetachedTaskWorker(");
+  const pidPatch = body.indexOf("pid: child.pid ?? null", spawnWorker);
+  const statePatch = body.lastIndexOf("upsertJob(", pidPatch);
+  const jobFileRewrite = body.indexOf("writeJobFile(", spawnWorker);
+  assert.ok(spawnWorker >= 0, "detached worker must be spawned");
+  assert.ok(pidPatch > spawnWorker, "spawned pid must be indexed after spawn");
+  assert.ok(statePatch > spawnWorker && statePatch < pidPatch, "pid must be merged into indexed state");
+  assert.equal(jobFileRewrite, -1, "parent must not rewrite the stored job after worker spawn");
+});
+
+test("task-worker does not revive a job cancelled before worker startup", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+
+  const stateDir = resolveStateDir(repo);
+  const jobsDir = path.join(stateDir, "jobs");
+  fs.mkdirSync(jobsDir, { recursive: true });
+  const jobId = "task-cancelled-before-worker";
+  const record = {
+    id: jobId,
+    kind: "task",
+    jobClass: "task",
+    title: "Cancelled rescue",
+    summary: "Cancelled before worker startup",
+    workspaceRoot: repo,
+    status: "cancelled",
+    phase: "cancelled",
+    pid: null,
+    write: true,
+    request: {
+      cwd: repo,
+      model: null,
+      effort: null,
+      prompt: "do not run this task",
+      write: true,
+      resumeLast: false,
+      jobId
+    }
+  };
+  fs.writeFileSync(path.join(jobsDir, `${jobId}.json`), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  fs.writeFileSync(
+    path.join(stateDir, "state.json"),
+    `${JSON.stringify({ version: 1, config: { stopReviewGate: false }, jobs: [record] }, null, 2)}\n`,
+    "utf8"
+  );
+
+  const worker = run("node", [SCRIPT, "task-worker", "--cwd", repo, "--job-id", jobId], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+  assert.equal(worker.status, 0, worker.stderr);
+  const stored = JSON.parse(fs.readFileSync(path.join(jobsDir, `${jobId}.json`), "utf8"));
+  const state = JSON.parse(fs.readFileSync(path.join(stateDir, "state.json"), "utf8"));
+  assert.equal(stored.status, "cancelled");
+  assert.equal(state.jobs.find((job) => job.id === jobId)?.status, "cancelled");
+});
+
 test("task --background enqueues a detached worker and exposes per-job status", async () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();

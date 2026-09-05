@@ -697,7 +697,13 @@ function enqueueBackgroundTask(cwd, job, request) {
   // becomes the PID authority when runTrackedJob records its own process.pid.
   writeJobFile(job.workspaceRoot, job.id, queuedRecord);
   upsertJob(job.workspaceRoot, queuedRecord);
-  spawnDetachedTaskWorker(cwd, job.id);
+  const child = spawnDetachedTaskWorker(cwd, job.id);
+  // Merge only the spawned PID into indexed state. Do not rewrite the job file here:
+  // the worker may already have advanced it from queued to running/completed.
+  upsertJob(job.workspaceRoot, {
+    id: job.id,
+    pid: child.pid ?? null
+  });
 
   return {
     payload: {
@@ -851,6 +857,9 @@ async function handleTaskWorker(argv) {
   const storedJob = readStoredJob(workspaceRoot, options["job-id"]);
   if (!storedJob) {
     throw new Error(`No stored job found for ${options["job-id"]}.`);
+  }
+  if (storedJob.status !== "queued") {
+    return;
   }
 
   const request = storedJob.request;
