@@ -18,6 +18,58 @@ is_supported_node() {
   "$1" -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 18 || (major === 18 && minor >= 18) ? 0 : 1)' >/dev/null 2>&1
 }
 
+windows_path_to_posix() {
+  value=$1
+  [ -n "$value" ] || return 1
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -u "$value"
+  else
+    printf '%s\n' "$value"
+  fi
+}
+
+find_windows_node() {
+  root=
+  if [ -n "${NVM_SYMLINK:-}" ]; then
+    root=$(windows_path_to_posix "$NVM_SYMLINK") || root=
+    for candidate in "$root/node.exe" "$root/node"; do
+      [ -x "$candidate" ] || continue
+      is_supported_node "$candidate" || continue
+      printf '%s\n' "$candidate"
+      return 0
+    done
+  fi
+  if [ -n "${VOLTA_HOME:-}" ]; then
+    root=$(windows_path_to_posix "$VOLTA_HOME") || root=
+    for candidate in "$root/bin/node.exe" "$root/bin/node"; do
+      [ -x "$candidate" ] || continue
+      is_supported_node "$candidate" || continue
+      printf '%s\n' "$candidate"
+      return 0
+    done
+  fi
+  if [ -n "${LOCALAPPDATA:-}" ]; then
+    root=$(windows_path_to_posix "$LOCALAPPDATA") || root=
+    for candidate in "$root/Volta/bin/node.exe" "$root/Volta/bin/node"; do
+      [ -x "$candidate" ] || continue
+      is_supported_node "$candidate" || continue
+      printf '%s\n' "$candidate"
+      return 0
+    done
+  fi
+  program_files=${PROGRAMFILES:-${PROGRAMW6432:-${ProgramFiles:-}}}
+  if [ -n "$program_files" ]; then
+    root=$(windows_path_to_posix "$program_files") || root=
+    for candidate in "$root/nodejs/node.exe" "$root/nodejs/node"; do
+      [ -x "$candidate" ] || continue
+      is_supported_node "$candidate" || continue
+      printf '%s\n' "$candidate"
+      return 0
+    done
+  fi
+  return 1
+}
+
 find_node() {
   if [ -n "${CODEX_COMPANION_NODE:-}" ] && [ -x "$CODEX_COMPANION_NODE" ] && is_supported_node "$CODEX_COMPANION_NODE"; then
     printf '%s\n' "$CODEX_COMPANION_NODE"
@@ -43,6 +95,7 @@ find_node() {
     printf '%s\n' "$candidate"
     return 0
   done
+  find_windows_node && return 0
   return 1
 }
 
@@ -56,7 +109,32 @@ add_supported_node_dir_to_path() {
   [ -x "$candidate" ] || return 0
   is_supported_node "$candidate" || return 0
   case "$candidate" in */*) candidate_dir=${candidate%/*} ;; *) candidate_dir=. ;; esac
-  case ":$PATH:" in *":$candidate_dir:"*) ;; *) PATH="$PATH:$candidate_dir" ;; esac
+  case ":${PATH:-}:" in *":$candidate_dir:"*) ;; *) PATH="${PATH:-}${PATH:+:}$candidate_dir" ;; esac
+}
+
+add_windows_node_dirs_to_path() {
+  root=
+  if [ -n "${NVM_SYMLINK:-}" ]; then
+    root=$(windows_path_to_posix "$NVM_SYMLINK") || root=
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/node.exe"
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/node"
+  fi
+  if [ -n "${VOLTA_HOME:-}" ]; then
+    root=$(windows_path_to_posix "$VOLTA_HOME") || root=
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/bin/node.exe"
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/bin/node"
+  fi
+  if [ -n "${LOCALAPPDATA:-}" ]; then
+    root=$(windows_path_to_posix "$LOCALAPPDATA") || root=
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/Volta/bin/node.exe"
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/Volta/bin/node"
+  fi
+  program_files=${PROGRAMFILES:-${PROGRAMW6432:-${ProgramFiles:-}}}
+  if [ -n "$program_files" ]; then
+    root=$(windows_path_to_posix "$program_files") || root=
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/nodejs/node.exe"
+    [ -n "$root" ] && add_supported_node_dir_to_path "$root/nodejs/node"
+  fi
 }
 
 case "$node_bin" in */*) node_dir=${node_bin%/*} ;; *) node_dir=. ;; esac
@@ -65,6 +143,7 @@ home=${HOME:-}
 for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$home"/.nvm/versions/node/*/bin/node "$home"/.local/share/fnm/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
   add_supported_node_dir_to_path "$candidate"
 done
+add_windows_node_dirs_to_path
 export PATH
 
 exec "$node_bin" "$script_dir/$target" "$@"

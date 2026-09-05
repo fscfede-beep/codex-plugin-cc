@@ -1,4 +1,4 @@
-import fs from "node:fs";
+﻿import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -79,6 +79,35 @@ test("portable launcher keeps searching compatible toolchains for codex", () => 
     assert.match(result.stdout, /SYSTEM_NODE:/);
     assert.match(result.stdout, /CODEX:.+[\\/]codex\n$/m);
   } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Regression for review: minimal Git Bash PATH must still discover a normal Windows Node install.
+test("portable launcher discovers Windows Node install roots under Git Bash", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-windows-"));
+  const emptyBin = path.join(home, "empty-bin");
+  const programFiles = path.join(home, "Program Files");
+  const nodeDir = path.join(programFiles, "nodejs");
+  fs.mkdirSync(emptyBin, { recursive: true });
+  fs.mkdirSync(nodeDir, { recursive: true });
+  const cygpath = path.join(emptyBin, "cygpath");
+  fs.writeFileSync(cygpath, '#!/bin/sh\nif [ "${1:-}" = "-u" ]; then shift; fi\nprintf "%s\\n" "$1"\n', "utf8");
+  fs.chmodSync(cygpath, 0o755);
+  const nodePath = path.join(nodeDir, "node.exe");
+  fs.copyFileSync(process.execPath, nodePath);
+  const probeName = `windows-node-probe-${process.pid}.mjs`;
+  const probePath = path.join(path.dirname(LAUNCHER), probeName);
+  fs.writeFileSync(probePath, 'console.log("WINDOWS_NODE")\n', "utf8");
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), probeName], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), ProgramFiles: programFiles.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "", NVM_SYMLINK: "", VOLTA_HOME: "", LOCALAPPDATA: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /WINDOWS_NODE/);
+  } finally {
+    fs.rmSync(probePath, { force: true });
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
