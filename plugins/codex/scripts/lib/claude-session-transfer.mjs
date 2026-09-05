@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -49,20 +49,35 @@ function nearestExistingAncestor(value) {
   return fs.realpathSync(current);
 }
 
+function fileSha256(filePath) {
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function filesHaveSameContent(source, candidate, sourceSha256) {
+  try {
+    if (fs.statSync(source).size !== fs.statSync(candidate).size) return false;
+    return fileSha256(candidate) === sourceSha256;
+  } catch {
+    return false;
+  }
+}
+
 function copyToExclusiveStagingPath(source, preferredPath) {
   const parsed = path.parse(preferredPath);
-  for (let attempt = 0; attempt < 16; attempt += 1) {
-    const candidate = attempt === 0
-      ? preferredPath
-      : path.join(parsed.dir, `${parsed.name}.codex-import-${randomUUID()}${parsed.ext}`);
+  const sourceSha256 = fileSha256(source);
+  const stableFallback = path.join(parsed.dir, `${parsed.name}.codex-import-${sourceSha256}${parsed.ext}`);
+  for (const candidate of [preferredPath, stableFallback]) {
     try {
       fs.copyFileSync(source, candidate, fs.constants.COPYFILE_EXCL);
-      return candidate;
+      return { path: candidate, created: true };
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
+      if (filesHaveSameContent(source, candidate, sourceSha256)) {
+        return { path: candidate, created: false };
+      }
     }
   }
-  throw new Error(`Cannot allocate an exclusive staging path under ${parsed.dir}`);
+  throw new Error(`Cannot allocate a stable staging path under ${parsed.dir}`);
 }
 
 function isWithin(root, candidate) {
@@ -136,10 +151,10 @@ export function prepareClaudeSessionImport(cwd, sourcePath) {
     throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportParent}`);
   }
 
-  const stagedPath = copyToExclusiveStagingPath(source, importPath);
-  const canonicalImportPath = fs.realpathSync(stagedPath);
+  const staged = copyToExclusiveStagingPath(source, importPath);
+  const canonicalImportPath = fs.realpathSync(staged.path);
   if (!isWithin(canonicalDefaultRoot, canonicalImportPath)) {
-    fs.unlinkSync(canonicalImportPath);
+    if (staged.created) fs.unlinkSync(canonicalImportPath);
     throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportPath}`);
   }
   return {
@@ -147,6 +162,7 @@ export function prepareClaudeSessionImport(cwd, sourcePath) {
     importPath: canonicalImportPath,
     staged: true,
     cleanup() {
+      if (!staged.created) return;
       try {
         fs.unlinkSync(canonicalImportPath);
       } catch (error) {

@@ -313,8 +313,18 @@ test("transfer retries with a collision-free staged filename when the mirrored d
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.readFileSync(mirroredPath, "utf8"), "STALE-STAGING\n");
   const fakeState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-codex-state.json"), "utf8"));
-  assert.notEqual(path.resolve(fakeState.lastExternalAgentImport.sourcePath), path.resolve(mirroredPath));
-  assert.equal(fs.existsSync(fakeState.lastExternalAgentImport.sourcePath), false);
+  const firstImportedPath = fakeState.lastExternalAgentImport.sourcePath;
+  assert.notEqual(path.resolve(firstImportedPath), path.resolve(mirroredPath));
+  assert.equal(fs.existsSync(firstImportedPath), false);
+
+  const retry = run("node", [SCRIPT, "transfer", "--json"], {
+    cwd: repo,
+    env: { ...buildEnv(binDir), HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, ".codex"), CLAUDE_CONFIG_DIR: claudeConfigDir, CODEX_COMPANION_TRANSCRIPT_PATH: sourcePath }
+  });
+  assert.equal(retry.status, 0, retry.stderr);
+  const retryState = JSON.parse(fs.readFileSync(path.join(binDir, "fake-codex-state.json"), "utf8"));
+  assert.equal(path.resolve(retryState.lastExternalAgentImport.sourcePath), path.resolve(firstImportedPath));
+  assert.equal(fs.existsSync(retryState.lastExternalAgentImport.sourcePath), false);
 });
 
 test("transfer rejects a staging path that escapes the default projects root through a symlink", () => {
