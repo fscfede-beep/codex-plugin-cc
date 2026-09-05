@@ -51,11 +51,20 @@ node_bin=$(find_node) || {
   exit 127
 }
 
-case "$node_bin" in
-  */*) node_dir=${node_bin%/*} ;;
-  *) node_dir=. ;;
-esac
+add_supported_node_dir_to_path() {
+  candidate=$1
+  [ -x "$candidate" ] || return 0
+  is_supported_node "$candidate" || return 0
+  case "$candidate" in */*) candidate_dir=${candidate%/*} ;; *) candidate_dir=. ;; esac
+  case ":$PATH:" in *":$candidate_dir:"*) ;; *) PATH="$PATH:$candidate_dir" ;; esac
+}
+
+case "$node_bin" in */*) node_dir=${node_bin%/*} ;; *) node_dir=. ;; esac
 PATH="$node_dir${PATH:+:$PATH}"
+home=${HOME:-}
+for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$home"/.nvm/versions/node/*/bin/node "$home"/.local/share/fnm/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
+  add_supported_node_dir_to_path "$candidate"
+done
 export PATH
 
 exec "$node_bin" "$script_dir/$target" "$@"

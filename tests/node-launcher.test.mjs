@@ -56,3 +56,29 @@ test("portable launcher skips unsupported Node versions", () => {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("portable launcher keeps searching compatible toolchains for codex", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-mixed-path-"));
+  const systemBin = path.join(home, "system-bin");
+  fs.mkdirSync(systemBin, { recursive: true });
+  const systemNode = path.join(systemBin, "node");
+  fs.writeFileSync(systemNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf \'SYSTEM_NODE:%s\\n\' "$*"\nprintf \'CODEX:%s\\n\' "$(command -v codex || true)"\n', "utf8");
+  fs.chmodSync(systemNode, 0o755);
+
+  const managedBin = installFakeNode(home, "v22.0.0", true);
+  const codexPath = path.join(managedBin, "codex");
+  fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(codexPath, 0o755);
+
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /SYSTEM_NODE:/);
+    assert.match(result.stdout, /CODEX:.+[\\/]codex\n$/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
