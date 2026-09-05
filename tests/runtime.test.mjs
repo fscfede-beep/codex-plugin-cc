@@ -920,6 +920,19 @@ test("task using the shared broker still completes when Codex spawns subagents",
   assert.equal(result.stdout, "Handled the requested task.\nTask prompt accepted.\n");
 });
 
+test("background task persists its queued request before spawning the detached worker", () => {
+  const source = fs.readFileSync(SCRIPT, "utf8");
+  const start = source.indexOf("function enqueueBackgroundTask");
+  const end = source.indexOf("\n}\n", start);
+  assert.ok(start >= 0 && end > start, "enqueueBackgroundTask source must be discoverable");
+  const body = source.slice(start, end);
+  const writeJob = body.indexOf("writeJobFile(");
+  const upsertJob = body.indexOf("upsertJob(");
+  const spawnWorker = body.indexOf("spawnDetachedTaskWorker(");
+  assert.ok(writeJob >= 0 && writeJob < spawnWorker, "job file must exist before worker spawn");
+  assert.ok(upsertJob >= 0 && upsertJob < spawnWorker, "queued state must exist before worker spawn");
+});
+
 test("task --background enqueues a detached worker and exposes per-job status", async () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();

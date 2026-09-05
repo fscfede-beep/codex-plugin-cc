@@ -685,17 +685,19 @@ function enqueueBackgroundTask(cwd, job, request) {
   const { logFile } = createTrackedProgress(job);
   appendLogLine(logFile, "Queued for background execution.");
 
-  const child = spawnDetachedTaskWorker(cwd, job.id);
   const queuedRecord = {
     ...job,
     status: "queued",
     phase: "queued",
-    pid: child.pid ?? null,
+    pid: null,
     logFile,
     request
   };
+  // Persist the request before the detached worker can start reading it. The worker
+  // becomes the PID authority when runTrackedJob records its own process.pid.
   writeJobFile(job.workspaceRoot, job.id, queuedRecord);
   upsertJob(job.workspaceRoot, queuedRecord);
+  spawnDetachedTaskWorker(cwd, job.id);
 
   return {
     payload: {
