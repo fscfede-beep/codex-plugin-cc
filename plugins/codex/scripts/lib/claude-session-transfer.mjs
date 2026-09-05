@@ -96,12 +96,22 @@ export function prepareClaudeSessionImport(cwd, sourcePath) {
   const importPath = path.join(defaultProjects, relative);
   fs.mkdirSync(path.dirname(importPath), { recursive: true });
 
+  const canonicalDefaultRoot = fs.realpathSync(defaultProjects);
+  const canonicalImportParent = fs.realpathSync(path.dirname(importPath));
+  if (canonicalImportParent !== canonicalDefaultRoot && !isWithin(canonicalDefaultRoot, canonicalImportParent)) {
+    throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportParent}`);
+  }
+
   if (fs.existsSync(importPath)) {
     throw new Error(`Cannot stage Claude session for Codex because the destination already exists: ${importPath}`);
   }
 
   fs.copyFileSync(source, importPath, fs.constants.COPYFILE_EXCL);
   const canonicalImportPath = fs.realpathSync(importPath);
+  if (!isWithin(canonicalDefaultRoot, canonicalImportPath)) {
+    fs.unlinkSync(canonicalImportPath);
+    throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportPath}`);
+  }
   return {
     sourcePath: source,
     importPath: canonicalImportPath,

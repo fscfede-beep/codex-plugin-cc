@@ -289,6 +289,34 @@ test("transfer supports CLAUDE_CONFIG_DIR and stages a temporary default-root co
   assert.equal(fs.existsSync(original), true);
 });
 
+test("transfer rejects a staging path that escapes the default projects root through a symlink", () => {
+  const home = makeTempDir();
+  const repo = path.join(home, "repo");
+  const binDir = makeTempDir();
+  const claudeConfigDir = path.join(home, ".claude-work");
+  const projectDir = path.join(claudeConfigDir, "projects", "-repo");
+  const sourcePath = path.join(projectDir, "session-symlink.jsonl");
+  const defaultProjects = path.join(home, ".claude", "projects");
+  const escapedDir = path.join(home, "escaped-staging");
+  fs.mkdirSync(repo, { recursive: true });
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.mkdirSync(defaultProjects, { recursive: true });
+  fs.mkdirSync(escapedDir, { recursive: true });
+  fs.symlinkSync(escapedDir, path.join(defaultProjects, "-repo"), "junction");
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(sourcePath, `${JSON.stringify({ type: "user", cwd: repo, message: { role: "user", content: "Do not escape staging." } })}\n`, "utf8");
+
+  const result = run("node", [SCRIPT, "transfer", "--json"], {
+    cwd: repo,
+    env: { ...buildEnv(binDir), HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, ".codex"), CLAUDE_CONFIG_DIR: claudeConfigDir, CODEX_COMPANION_TRANSCRIPT_PATH: sourcePath }
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /outside.*default Claude projects root|staging.*outside/i);
+  assert.equal(fs.existsSync(path.join(escapedDir, "session-symlink.jsonl")), false);
+});
+
 test("transfer reports an actionable upgrade error when native import is unsupported", () => {
   const home = makeTempDir();
   const repo = path.join(home, "repo");
