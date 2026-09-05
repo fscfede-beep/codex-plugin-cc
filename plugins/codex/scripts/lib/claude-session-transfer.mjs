@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -62,6 +62,32 @@ function filesHaveSameContent(source, candidate, sourceSha256) {
   }
 }
 
+const STAGING_MARKER_CONTENT = "codex-plugin-cc-staging-v1\n";
+const STAGING_LOCK_WAIT = new Int32Array(new SharedArrayBuffer(4));
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+function staleLockCanBeRemoved(lockPath) {
+  const ownerPath = path.join(lockPath, "owner");
+  try {
+    const pid = Number(fs.readFileSync(ownerPath, "utf8"));
+    return !(Number.isSafeInteger(pid) && pid > 0 && processIsAlive(pid));
+  } catch {
+    try {
+      return Date.now() - fs.statSync(lockPath).mtimeMs > 1000;
+    } catch {
+      return true;
+    }
+  }
+}
+
 function copyToExclusiveStagingPath(source, preferredPath) {
   const parsed = path.parse(preferredPath);
   const sourceSha256 = fileSha256(source);
@@ -69,15 +95,86 @@ function copyToExclusiveStagingPath(source, preferredPath) {
   for (const candidate of [preferredPath, stableFallback]) {
     try {
       fs.copyFileSync(source, candidate, fs.constants.COPYFILE_EXCL);
-      return { path: candidate, created: true };
+      return { path: candidate, created: true, sourceSha256 };
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       if (filesHaveSameContent(source, candidate, sourceSha256)) {
-        return { path: candidate, created: false };
+        return { path: candidate, created: false, sourceSha256 };
       }
     }
   }
   throw new Error(`Cannot allocate a stable staging path under ${parsed.dir}`);
+}
+
+function withStagingLock(stagedPath, callback) {
+  const lockPath = `${stagedPath}.codex-staging-lock`;
+  const ownerPath = path.join(lockPath, "owner");
+  const deadline = Date.now() + 5000;
+  while (true) {
+    try {
+      fs.mkdirSync(lockPath);
+      try {
+        fs.writeFileSync(ownerPath, `${process.pid}\n`, { flag: "wx" });
+      } catch (error) {
+        fs.rmSync(lockPath, { recursive: true, force: true });
+        throw error;
+      }
+      break;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      if (staleLockCanBeRemoved(lockPath)) {
+        try { fs.rmSync(lockPath, { recursive: true, force: true }); } catch {}
+        continue;
+      }
+      if (Date.now() >= deadline) throw new Error(`Timed out acquiring staging lock for ${stagedPath}`);
+      Atomics.wait(STAGING_LOCK_WAIT, 0, 0, 5);
+    }
+  }
+  try { return callback(); } finally { fs.rmSync(lockPath, { recursive: true, force: true }); }
+}
+
+function managedMarkerMatches(markerPath) {
+  try { return fs.readFileSync(markerPath, "utf8") === STAGING_MARKER_CONTENT; } catch { return false; }
+}
+
+function acquireStagingLease(stagedPath, staged) {
+  const directory = path.dirname(stagedPath);
+  const base = path.basename(stagedPath);
+  const markerPath = `${stagedPath}.codex-staging-managed`;
+  const leasePrefix = `${base}.codex-staging-lease-`;
+  const leasePath = path.join(directory, `${leasePrefix}${process.pid}-${randomUUID()}`);
+  let managed = false;
+
+  withStagingLock(stagedPath, () => {
+    const markerMatches = managedMarkerMatches(markerPath);
+    if (staged.created) {
+      if (fs.existsSync(markerPath) && !markerMatches) {
+        throw new Error(`Refusing to manage unknown staging marker: ${markerPath}`);
+      }
+      if (!markerMatches) fs.writeFileSync(markerPath, STAGING_MARKER_CONTENT, { flag: "wx" });
+      managed = true;
+    } else {
+      managed = markerMatches;
+    }
+    if (managed) fs.writeFileSync(leasePath, "", { flag: "wx" });
+  });
+
+  return {
+    release() {
+      if (!managed) return;
+      withStagingLock(stagedPath, () => {
+        try { fs.unlinkSync(leasePath); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+        const activeLeases = fs.readdirSync(directory).filter((name) => name.startsWith(leasePrefix));
+        if (activeLeases.length > 0 || !managedMarkerMatches(markerPath)) return;
+        if (fs.existsSync(stagedPath) && fileSha256(stagedPath) !== staged.sourceSha256) {
+          fs.unlinkSync(markerPath);
+          return;
+        }
+        try { fs.unlinkSync(stagedPath); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+        try { fs.unlinkSync(markerPath); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+      });
+    }
+  };
 }
 
 function isWithin(root, candidate) {
@@ -157,19 +254,13 @@ export function prepareClaudeSessionImport(cwd, sourcePath) {
     if (staged.created) fs.unlinkSync(canonicalImportPath);
     throw new Error(`Cannot stage Claude session outside the default Claude projects root: ${canonicalImportPath}`);
   }
+  const lease = acquireStagingLease(canonicalImportPath, staged);
   return {
     sourcePath: source,
     importPath: canonicalImportPath,
     staged: true,
     cleanup() {
-      if (!staged.created) return;
-      try {
-        fs.unlinkSync(canonicalImportPath);
-      } catch (error) {
-        if (error?.code !== "ENOENT") {
-          throw error;
-        }
-      }
+      lease.release();
     }
   };
 }
