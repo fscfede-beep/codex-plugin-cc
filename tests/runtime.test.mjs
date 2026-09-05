@@ -527,6 +527,27 @@ test("task --resume-thread resumes the requested thread instead of the latest on
   assert.equal(fakeState.lastTurnStart.prompt, "follow up");
 });
 
+test("task --resume-thread rebinds a foreign thread to the current workspace", () => {
+  const repoA = makeTempDir();
+  const repoB = makeTempDir();
+  const binDir = makeTempDir();
+  const statePath = path.join(binDir, "fake-codex-state.json");
+  installFakeCodex(binDir);
+  initGitRepo(repoA);
+  initGitRepo(repoB);
+
+  assert.equal(run("node", [SCRIPT, "task", "first task"], { cwd: repoA, env: buildEnv(binDir) }).status, 0);
+  const resumed = run("node", [SCRIPT, "task", "--resume-thread", "thr_1", "follow up"], {
+    cwd: repoB,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(resumed.status, 0, resumed.stderr);
+  const fakeState = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  assert.equal(path.resolve(fakeState.threads.find((thread) => thread.id === "thr_1").cwd), path.resolve(repoB));
+  assert.equal(fakeState.lastTurnStart.threadId, "thr_1");
+});
+
 test("task --resume-thread can continue without an explicit prompt", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();
