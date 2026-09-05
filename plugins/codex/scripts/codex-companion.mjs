@@ -1031,11 +1031,6 @@ async function handleCancel(argv) {
     );
   }
 
-  const workerPid = Number.isFinite(job.pid) ? job.pid : readJobPid(workspaceRoot, job.id);
-  terminateProcessTree(workerPid ?? Number.NaN);
-  removeJobPid(workspaceRoot, job.id);
-  appendLogLine(job.logFile, "Cancelled by user.");
-
   const completedAt = nowIso();
   const nextJob = {
     ...job,
@@ -1045,20 +1040,32 @@ async function handleCancel(argv) {
     completedAt,
     errorMessage: "Cancelled by user."
   };
+  const persistCancellation = () => {
+    writeJobFile(workspaceRoot, job.id, {
+      ...existing,
+      ...nextJob,
+      cancelledAt: completedAt
+    });
+    upsertJob(workspaceRoot, {
+      id: job.id,
+      status: "cancelled",
+      phase: "cancelled",
+      pid: null,
+      errorMessage: "Cancelled by user.",
+      completedAt
+    });
+  };
 
-  writeJobFile(workspaceRoot, job.id, {
-    ...existing,
-    ...nextJob,
-    cancelledAt: completedAt
-  });
-  upsertJob(workspaceRoot, {
-    id: job.id,
-    status: "cancelled",
-    phase: "cancelled",
-    pid: null,
-    errorMessage: "Cancelled by user.",
-    completedAt
-  });
+  // Claim terminal cancellation before PID discovery so a worker that starts
+  // concurrently must either observe cancelled state or expose a PID we can stop.
+  persistCancellation();
+  const workerPid = Number.isFinite(job.pid) ? job.pid : readJobPid(workspaceRoot, job.id);
+  terminateProcessTree(workerPid ?? Number.NaN);
+  removeJobPid(workspaceRoot, job.id);
+  appendLogLine(job.logFile, "Cancelled by user.");
+  // Reassert the terminal state in case an already-starting worker published
+  // `running` between the initial cancellation claim and process termination.
+  persistCancellation();
 
   const payload = {
     jobId: job.id,

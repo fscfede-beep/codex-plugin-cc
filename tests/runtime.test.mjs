@@ -962,6 +962,22 @@ test("task-worker publishes its own pid before reading queued state", () => {
   assert.ok(publishPid < readJob, "worker pid must be visible to cancellation before queued state is claimed");
 });
 
+test("cancel records terminal state before reading the worker pid and reasserts it after termination", () => {
+  const source = fs.readFileSync(SCRIPT, "utf8");
+  const start = source.indexOf("async function handleCancel");
+  const end = source.indexOf("\nasync function main", start);
+  assert.ok(start >= 0 && end > start, "handleCancel source must be discoverable");
+  const body = source.slice(start, end);
+  const firstClaim = body.indexOf("persistCancellation();");
+  const readPid = body.indexOf("readJobPid(workspaceRoot, job.id)");
+  const terminate = body.indexOf("terminateProcessTree(");
+  const finalClaim = body.indexOf("persistCancellation();", firstClaim + 1);
+  assert.ok(firstClaim >= 0, "cancel must claim terminal state");
+  assert.ok(readPid > firstClaim, "cancelled state must be persisted before pid lookup");
+  assert.ok(terminate > readPid, "pid lookup must precede process termination");
+  assert.ok(finalClaim > terminate, "cancelled state must be reasserted after termination");
+});
+
 test("task-worker does not revive a job cancelled before worker startup", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();
