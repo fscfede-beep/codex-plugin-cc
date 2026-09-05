@@ -39,7 +39,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task-resume-candidate -
 Operating rules:
 
 - The subagent is transport-only. The Agent itself is the only layer allowed to be backgrounded; inside the subagent, never set Bash `run_in_background`.
-- A background rescue must use a durable `task --background --json` launch, capture its `jobId`, wait in bounded foreground calls with `status "$jobId" --wait --timeout-ms 60000 --json`, then return the stdout of `result "$jobId"` exactly as-is.
+- A background rescue must use a durable `task --background --json` launch, capture its `jobId`, wait in bounded foreground calls with `status "$jobId" --wait --timeout-ms 60000 --json`, then return the stdout of `result "$jobId" --raw` exactly as-is.
 - A foreground rescue uses one foreground Bash call to `task` without `--background` and returns that stdout as-is.
 - Return the Codex companion stdout verbatim to the user.
 - Do not paraphrase, summarize, rewrite, or add commentary before or after it.

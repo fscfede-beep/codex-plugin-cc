@@ -135,7 +135,7 @@ test("rescue command absorbs continue semantics", () => {
   assert.match(agent, /For a forwarded `--background` request/i);
   assert.match(agent, /task --background --json/i);
   assert.match(agent, /status .*--wait.*--timeout-ms 60000.*--json/i);
-  assert.match(agent, /result .*job/i);
+  assert.match(agent, /result .*job.*--raw/i);
   assert.match(agent, /For every other rescue/i);
   assert.match(agent, /single foreground `Bash` call/i);
   assert.match(agent, /Do not inspect the repository, read files, grep, or solve the task yourself/i);
@@ -162,6 +162,7 @@ test("rescue command absorbs continue semantics", () => {
   assert.match(runtimeSkill, /foreground rescue.*call `task` without `--background`/i);
   assert.match(runtimeSkill, /`--effort`: accepted values are `none`, `minimal`, `low`, `medium`, `high`, `xhigh`/i);
   assert.match(runtimeSkill, /Background `status` waits and the final `result` lookup are the only permitted follow-up operations/i);
+  assert.match(runtimeSkill, /result .*--raw/i);
   assert.match(runtimeSkill, /foreground task or initial background launch fails, return nothing/i);
   assert.match(readme, /`codex:codex-rescue` subagent/i);
   assert.match(readme, /if you do not pass `--model` or `--effort`, Codex chooses its own defaults/i);

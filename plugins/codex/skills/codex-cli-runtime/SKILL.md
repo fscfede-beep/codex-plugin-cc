@@ -26,7 +26,7 @@ Execution rules:
 Command selection:
 - Use exactly one `task` launch per rescue handoff. Never run the Bash tool in background from this subagent.
 - The outer `/codex:rescue` command owns whether the rescue subagent runs in the background or foreground. Do not treat `--background` or `--wait` as natural-language task text.
-- For `--background`, launch `task --background --json` in a foreground Bash call, capture `jobId`, then use foreground `status "$jobId" --wait --timeout-ms 60000 --json` calls until terminal and finish with `result "$jobId"`.
+- For `--background`, launch `task --background --json` in a foreground Bash call, capture `jobId`, then use foreground `status "$jobId" --wait --timeout-ms 60000 --json` calls until terminal and finish with `result "$jobId" --raw`.
 - Keep each background status wait bounded to 60 seconds. The detached task worker survives between waits and remains recoverable if the wrapper is interrupted.
 - For `--wait` or a foreground rescue, strip the execution flag and call `task` without `--background` so the Bash call returns Codex's final stdout directly.
 - If the forwarded request includes `--model`, normalize `spark` to `gpt-5.3-codex-spark` and pass it through to `task`.
@@ -42,5 +42,5 @@ Safety rules:
 - Default to write-capable Codex work in `codex:codex-rescue` unless the user explicitly asks for read-only behavior.
 - Preserve the user's task text as-is apart from stripping routing flags.
 - Do not inspect the repository, read files, grep, or solve the task yourself. Background `status` waits and the final `result` lookup are the only permitted follow-up operations.
-- Return the final Codex companion stdout exactly as-is: the attached `task` stdout for foreground rescues, or the final `result "$jobId"` stdout for background rescues.
+- Return the final Codex companion stdout exactly as-is: the attached `task` stdout for foreground rescues, or the final `result "$jobId" --raw` stdout for background rescues.
 - If the foreground task or initial background launch fails, return nothing. Once a background `jobId` exists, do not redispatch it because a later status lookup fails.

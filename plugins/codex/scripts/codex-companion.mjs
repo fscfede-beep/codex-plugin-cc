@@ -82,7 +82,7 @@ function printUsage() {
       "  node scripts/codex-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|spark>] [--effort <none|minimal|low|medium|high|xhigh>] [prompt]",
       "  node scripts/codex-companion.mjs transfer [--source <claude-jsonl>] [--json]",
       "  node scripts/codex-companion.mjs status [job-id] [--all] [--json]",
-      "  node scripts/codex-companion.mjs result [job-id] [--json]",
+      "  node scripts/codex-companion.mjs result [job-id] [--json|--raw]",
       "  node scripts/codex-companion.mjs cancel [job-id] [--json]"
     ].join("\n")
   );
@@ -907,16 +907,40 @@ async function handleStatus(argv) {
   outputResult(renderStatusPayload(report, options.json), options.json);
 }
 
+function extractStoredCodexRawOutput(storedJob) {
+  if (typeof storedJob?.result?.rawOutput === "string") {
+    return storedJob.result.rawOutput;
+  }
+  if (typeof storedJob?.result?.codex?.stdout === "string") {
+    return storedJob.result.codex.stdout;
+  }
+  return null;
+}
+
 function handleResult(argv) {
   const { options, positionals } = parseCommandInput(argv, {
     valueOptions: ["cwd"],
-    booleanOptions: ["json"]
+    booleanOptions: ["json", "raw"]
   });
+
+  if (options.json && options.raw) {
+    throw new Error("`result --json` and `result --raw` are mutually exclusive.");
+  }
 
   const cwd = resolveCommandCwd(options);
   const reference = positionals[0] ?? "";
   const { workspaceRoot, job } = resolveResultJob(cwd, reference);
   const storedJob = readStoredJob(workspaceRoot, job.id);
+
+  if (options.raw) {
+    const rawOutput = extractStoredCodexRawOutput(storedJob);
+    if (rawOutput == null) {
+      throw new Error(`No raw Codex output was stored for job ${job.id}.`);
+    }
+    process.stdout.write(rawOutput);
+    return;
+  }
+
   const payload = {
     job,
     storedJob

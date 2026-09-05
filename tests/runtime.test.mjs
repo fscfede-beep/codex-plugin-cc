@@ -2257,3 +2257,45 @@ test("setup and status honor --cwd when reading shared session runtime", () => {
   assert.equal(payload.sessionRuntime.mode, "shared");
   assert.equal(payload.sessionRuntime.endpoint, "unix:/tmp/fake-broker.sock");
 });
+
+
+test("result --raw returns only stored Codex output", () => {
+  const workspace = makeTempDir();
+  const stateDir = resolveStateDir(workspace);
+  const jobsDir = path.join(stateDir, "jobs");
+  fs.mkdirSync(jobsDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(jobsDir, "task-raw.json"),
+    JSON.stringify({
+      id: "task-raw",
+      status: "completed",
+      title: "Codex Task",
+      threadId: "thr_raw",
+      result: { codex: { stdout: "RAW CODEX OUTPUT\nsecond line" } }
+    }, null, 2),
+    "utf8"
+  );
+  fs.writeFileSync(
+    path.join(stateDir, "state.json"),
+    `${JSON.stringify({
+      version: 1,
+      config: { stopReviewGate: false },
+      jobs: [{
+        id: "task-raw",
+        status: "completed",
+        title: "Codex Task",
+        jobClass: "task",
+        threadId: "thr_raw",
+        summary: "background rescue",
+        createdAt: "2026-09-05T17:00:00.000Z",
+        updatedAt: "2026-09-05T17:01:00.000Z"
+      }]
+    }, null, 2)}\n`,
+    "utf8"
+  );
+
+  const result = run("node", [SCRIPT, "result", "task-raw", "--raw"], { cwd: workspace });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "RAW CODEX OUTPUT\nsecond line");
+});
