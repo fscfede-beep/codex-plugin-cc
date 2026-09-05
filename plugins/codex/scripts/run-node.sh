@@ -98,11 +98,12 @@ find_managed_node() {
   require_codex=$1
   home=${HOME:-}
   nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
+  fnm_dir=$(windows_path_to_posix "${FNM_DIR:-$home/.local/share/fnm}") || fnm_dir=
   for candidate in \
     /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node \
     "$home/.volta/bin/node" \
     "$nvm_dir"/versions/node/*/bin/node \
-    "$home"/.local/share/fnm/node-versions/*/installation/bin/node \
+    "$fnm_dir"/node-versions/*/installation/bin/node \
     "$home"/.asdf/installs/nodejs/*/bin/node \
     "$home"/.local/share/mise/installs/node/*/bin/node; do
     [ -x "$candidate" ] || continue
@@ -209,7 +210,8 @@ case "$node_bin" in */*) node_dir=${node_bin%/*} ;; *) node_dir=. ;; esac
 PATH="$node_dir${PATH:+:$PATH}"
 home=${HOME:-}
 nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
-for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$home"/.local/share/fnm/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
+fnm_dir=$(windows_path_to_posix "${FNM_DIR:-$home/.local/share/fnm}") || fnm_dir=
+for candidate in /opt/homebrew/bin/node /usr/local/bin/node /opt/local/bin/node "$home/.volta/bin/node" "$nvm_dir"/versions/node/*/bin/node "$fnm_dir"/node-versions/*/installation/bin/node "$home"/.asdf/installs/nodejs/*/bin/node "$home"/.local/share/mise/installs/node/*/bin/node; do
   add_supported_node_dir_to_path "$candidate"
 done
 add_windows_node_dirs_to_path

@@ -12,6 +12,7 @@ const BASH = process.env.SHELL || (process.platform === "win32" ? "C:\\Program F
 const VERSION_MANAGER_ENV_KEYS = new Set([
   "nvm_dir",
   "nvm_symlink",
+  "fnm_dir",
   "volta_home",
   "localappdata",
   "programfiles",
@@ -247,6 +248,58 @@ test("portable launcher enriches PATH from a custom NVM_DIR", () => {
   }
 });
 
+
+test("portable launcher discovers Node from a custom FNM_DIR", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-custom-fnm-"));
+  const emptyBin = path.join(home, "empty-bin");
+  const fnmDir = path.join(home, "custom-fnm");
+  const binDir = path.join(fnmDir, "node-versions", "v22.0.0", "installation", "bin");
+  fs.mkdirSync(emptyBin, { recursive: true });
+  fs.mkdirSync(binDir, { recursive: true });
+  const nodePath = path.join(binDir, "node");
+  fs.writeFileSync(nodePath, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "CUSTOM_FNM_NODE:%s\\n" "$*"\n', "utf8");
+  fs.chmodSync(nodePath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: emptyBin.replaceAll("\\", "/"), FNM_DIR: fnmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CUSTOM_FNM_NODE:/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("portable launcher aligns Node and codex from a custom FNM_DIR", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-custom-fnm-path-"));
+  const systemBin = path.join(home, "system-bin");
+  const fnmDir = path.join(home, "custom-fnm");
+  const managedBin = path.join(fnmDir, "node-versions", "v24.2.0", "installation", "bin");
+  fs.mkdirSync(systemBin, { recursive: true });
+  fs.mkdirSync(managedBin, { recursive: true });
+  const systemNode = path.join(systemBin, "node");
+  fs.writeFileSync(systemNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "SYSTEM_NODE:%s\\n" "$*"\n', "utf8");
+  fs.chmodSync(systemNode, 0o755);
+  const managedNode = path.join(managedBin, "node");
+  fs.writeFileSync(managedNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "CUSTOM_FNM_MANAGED:%s\\n" "$*"\nprintf "CODEX:%s\\n" "$(command -v codex || true)"\n', "utf8");
+  fs.chmodSync(managedNode, 0o755);
+  const codexPath = path.join(managedBin, "codex");
+  fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(codexPath, 0o755);
+  try {
+    const result = spawnSync(BASH, [LAUNCHER.replaceAll("\\", "/"), "companion.mjs", "status", "--json"], {
+      encoding: "utf8",
+      env: { ...cleanVersionManagerEnv(), HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), FNM_DIR: fnmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /CUSTOM_FNM_MANAGED:/);
+    assert.doesNotMatch(result.stdout, /SYSTEM_NODE:/);
+    assert.match(result.stdout, /CODEX:.+[\\/]custom-fnm[\\/]node-versions[\\/]v24\.2\.0[\\/]installation[\\/]bin[\\/]codex\n$/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test("portable launcher accepts CODEX_COMPANION_NODE as a native Windows path", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-configured-windows-"));
