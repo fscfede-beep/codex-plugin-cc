@@ -76,7 +76,8 @@ test("portable launcher keeps searching compatible toolchains for codex", () => 
       env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /SYSTEM_NODE:/);
+    assert.match(result.stdout, /FAKE_NODE_v22\.0\.0:/);
+    assert.doesNotMatch(result.stdout, /SYSTEM_NODE:/);
     assert.match(result.stdout, /CODEX:.+[\\/]codex\n$/m);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
@@ -209,7 +210,7 @@ test("portable launcher enriches PATH from a custom NVM_DIR", () => {
   fs.writeFileSync(systemNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "SYSTEM_NODE:%s\\n" "$*"\nprintf "CODEX:%s\\n" "$(command -v codex || true)"\n', "utf8");
   fs.chmodSync(systemNode, 0o755);
   const managedNode = path.join(managedBin, "node");
-  fs.writeFileSync(managedNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nexit 0\n', "utf8");
+  fs.writeFileSync(managedNode, '#!/bin/sh\nif [ "${1:-}" = "-e" ]; then exit 0; fi\nprintf "CUSTOM_NVM_MANAGED:%s\\n" "$*"\nprintf "CODEX:%s\\n" "$(command -v codex || true)"\n', "utf8");
   fs.chmodSync(managedNode, 0o755);
   const codexPath = path.join(managedBin, "codex");
   fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
@@ -220,8 +221,28 @@ test("portable launcher enriches PATH from a custom NVM_DIR", () => {
       env: { ...process.env, HOME: home.replaceAll("\\", "/"), PATH: systemBin.replaceAll("\\", "/"), NVM_DIR: nvmDir.replaceAll("\\", "/"), CODEX_COMPANION_NODE: "" }
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /SYSTEM_NODE:/);
+    assert.match(result.stdout, /CUSTOM_NVM_MANAGED:/);
+    assert.doesNotMatch(result.stdout, /SYSTEM_NODE:/);
     assert.match(result.stdout, /CODEX:.+[\\/]custom-nvm[\\/]versions[\\/]node[\\/]v22\.0\.0[\\/]bin[\\/]codex\n$/m);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+
+test("portable launcher aligns Node with the supported toolchain that contains codex", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "codex-node-multi-supported-"));
+  installFakeNode(home, "v20.19.0", true);
+  const newerBin = installFakeNode(home, "v24.2.0", true);
+  const codexPath = path.join(newerBin, "codex");
+  fs.writeFileSync(codexPath, "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(codexPath, 0o755);
+  try {
+    const result = runWithMinimalPath(home);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /FAKE_NODE_v24\.2\.0:/);
+    assert.doesNotMatch(result.stdout, /FAKE_NODE_v20\.19\.0:/);
+    assert.match(result.stdout, /CODEX:.+[\\/]v24\.2\.0[\\/]bin[\\/]codex\n$/m);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

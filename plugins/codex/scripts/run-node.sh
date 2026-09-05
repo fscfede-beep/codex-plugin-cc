@@ -88,18 +88,14 @@ find_windows_node() {
   return 1
 }
 
-find_node() {
-  if [ -n "${CODEX_COMPANION_NODE:-}" ] && [ -x "$CODEX_COMPANION_NODE" ] && is_supported_node "$CODEX_COMPANION_NODE"; then
-    printf '%s\n' "$CODEX_COMPANION_NODE"
-    return 0
-  fi
-  if command -v node >/dev/null 2>&1; then
-    candidate=$(command -v node)
-    if is_supported_node "$candidate"; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  fi
+node_dir_has_codex() {
+  candidate=$1
+  case "$candidate" in */*) candidate_dir=${candidate%/*} ;; *) candidate_dir=. ;; esac
+  [ -x "$candidate_dir/codex" ] || [ -f "$candidate_dir/codex.cmd" ] || [ -f "$candidate_dir/codex.exe" ]
+}
+
+find_managed_node() {
+  require_codex=$1
   home=${HOME:-}
   nvm_dir=$(windows_path_to_posix "${NVM_DIR:-$home/.nvm}") || nvm_dir=
   for candidate in \
@@ -111,9 +107,45 @@ find_node() {
     "$home"/.local/share/mise/installs/node/*/bin/node; do
     [ -x "$candidate" ] || continue
     is_supported_node "$candidate" || continue
+    if [ "$require_codex" = "true" ]; then
+      node_dir_has_codex "$candidate" || continue
+    fi
     printf '%s\n' "$candidate"
     return 0
   done
+  return 1
+}
+
+find_node() {
+  if [ -n "${CODEX_COMPANION_NODE:-}" ] && [ -x "$CODEX_COMPANION_NODE" ] && is_supported_node "$CODEX_COMPANION_NODE"; then
+    printf '%s\n' "$CODEX_COMPANION_NODE"
+    return 0
+  fi
+
+  path_node=
+  if command -v node >/dev/null 2>&1; then
+    candidate=$(command -v node)
+    if is_supported_node "$candidate"; then
+      path_node=$candidate
+      if command -v codex >/dev/null 2>&1; then
+        printf '%s\n' "$path_node"
+        return 0
+      fi
+    fi
+  fi
+
+  if candidate=$(find_managed_node true); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  if [ -n "$path_node" ]; then
+    printf '%s\n' "$path_node"
+    return 0
+  fi
+  if candidate=$(find_managed_node false); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
   find_windows_node && return 0
   return 1
 }
