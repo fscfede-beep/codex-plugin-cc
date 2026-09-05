@@ -239,6 +239,12 @@ export async function runTrackedJob(job, runner, options = {}) {
         cancelledAt: completedAt,
         errorMessage: "Cancelled by user."
       });
+      if (isJobRemovalRequested(job.workspaceRoot, job.id)) {
+        const jobFile = resolveJobFile(job.workspaceRoot, job.id);
+        if (fs.existsSync(jobFile)) fs.unlinkSync(jobFile);
+        removeJobFromState(job.workspaceRoot, job.id);
+        return removedExecution(job);
+      }
       appendLogLine(options.logFile ?? job.logFile ?? null, "Cancelled before task execution.");
       return {
         exitStatus: 0,

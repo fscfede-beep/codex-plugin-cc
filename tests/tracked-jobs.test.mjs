@@ -49,6 +49,18 @@ test("runTrackedJob checks cancellation after publishing running state and befor
 });
 
 
+test("runTrackedJob rechecks removal after persisting startup cancellation", () => {
+  const source = fs.readFileSync(TRACKED_JOBS_SOURCE, "utf8");
+  const start = source.indexOf("if (isJobCancellationRequested(job.workspaceRoot, job.id))", source.indexOf("export async function runTrackedJob"));
+  const end = source.indexOf("const execution = await runner()", start);
+  const branch = source.slice(start, end);
+  const cancelledWrite = branch.indexOf("writeJobFile(job.workspaceRoot, job.id, cancelledRecord)");
+  const cancelledUpsert = branch.indexOf("upsertJob(job.workspaceRoot");
+  const removalRecheck = branch.indexOf("isJobRemovalRequested(job.workspaceRoot, job.id)", cancelledUpsert);
+  assert.ok(cancelledWrite >= 0 && cancelledWrite < cancelledUpsert);
+  assert.ok(cancelledUpsert >= 0 && cancelledUpsert < removalRecheck);
+});
+
 test("runTrackedJob does not recreate a job removed during execution", async () => {
   const repo = makeTempDir();
   initGitRepo(repo);
