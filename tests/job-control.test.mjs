@@ -37,6 +37,24 @@ test("reconcileJobLiveness marks an absent worker as terminated-unknown", () => 
   assert.equal(job.pid, 999999);
 });
 
+test("reconcileJobLiveness keeps a dead worker active when its Codex turn may still run", () => {
+  const job = reconcileJobLiveness(
+    activeJob({ threadId: "thr_live", turnId: "turn_live" }),
+    {
+      killImpl() {
+        const error = new Error("no such process");
+        error.code = "ESRCH";
+        throw error;
+      }
+    }
+  );
+
+  assert.equal(job.status, "running");
+  assert.equal(job.phase, "worker-exited-turn-unknown");
+  assert.equal(job.threadId, "thr_live");
+  assert.equal(job.turnId, "turn_live");
+});
+
 test("reconcileJobLiveness treats EPERM as alive", () => {
   const original = activeJob();
   const job = reconcileJobLiveness(original, {
@@ -58,6 +76,43 @@ test("reconcileJobLiveness leaves terminal and pid-less jobs untouched", () => {
   assert.deepEqual(reconcileJobLiveness(completed, { killImpl }), completed);
   assert.deepEqual(reconcileJobLiveness(noPid, { killImpl }), noPid);
   assert.equal(calls, 0);
+});
+
+test("dead wrapper with a live turn stays active and cancelable", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-job-turn-unknown-"));
+  const workspace = path.join(root, "workspace");
+  const previousPluginData = process.env.CLAUDE_PLUGIN_DATA;
+  fs.mkdirSync(workspace, { recursive: true });
+  process.env.CLAUDE_PLUGIN_DATA = path.join(root, "plugin-data");
+
+  try {
+    saveState(workspace, {
+      config: { stopReviewGate: false },
+      jobs: [activeJob({
+        threadId: "thr_live",
+        turnId: "turn_live",
+        sessionId: "sess-current",
+        createdAt: "2026-09-04T10:00:00.000Z",
+        updatedAt: "2026-09-04T10:01:00.000Z"
+      })]
+    });
+    const killImpl = () => {
+      const error = new Error("no such process");
+      error.code = "ESRCH";
+      throw error;
+    };
+    const options = { env: { CODEX_COMPANION_SESSION_ID: "sess-current" }, killImpl };
+    const report = buildStatusSnapshot(workspace, options);
+    assert.equal(report.running.length, 1);
+    assert.equal(report.running[0].phase, "worker-exited-turn-unknown");
+    assert.equal(report.running[0].pid, null);
+    assert.equal(resolveCancelableJob(workspace, "task-dead-worker", options).job.turnId, "turn_live");
+    assert.throws(() => resolveResultJob(workspace, "task-dead-worker", options));
+  } finally {
+    if (previousPluginData === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+    else process.env.CLAUDE_PLUGIN_DATA = previousPluginData;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("buildStatusSnapshot moves a dead worker out of the active queue", () => {

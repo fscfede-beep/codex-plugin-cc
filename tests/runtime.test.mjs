@@ -523,6 +523,26 @@ test("task --resume-last ignores a stale current-session worker and resumes the 
   assert.equal(resumed.stdout, "Resumed the prior run.\nFollow-up prompt accepted.\n");
 });
 
+test("task --resume-last blocks when a dead wrapper still has a live turn identity", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir);
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+  const env = { ...buildEnv(binDir), CODEX_COMPANION_SESSION_ID: "sess-current" };
+  const first = run("node", [SCRIPT, "task", "initial task"], { cwd: repo, env });
+  assert.equal(first.status, 0, first.stderr);
+  const statePath = path.join(resolveStateDir(repo), "state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  state.jobs.push({ id: "task-orphan-turn", status: "running", title: "Codex Task", jobClass: "task", sessionId: "sess-current", pid: 999999, threadId: "thr_orphan", turnId: "turn_orphan", updatedAt: "2099-01-01T00:00:00.000Z" });
+  fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  const resumed = run("node", [SCRIPT, "task", "--resume-last", "follow up"], { cwd: repo, env });
+  assert.notEqual(resumed.status, 0);
+  assert.match(resumed.stderr, /task-orphan-turn is still running/i);
+});
+
 test("task-resume-candidate returns the latest rescue thread from the current session", () => {
   const workspace = makeTempDir();
   const stateDir = resolveStateDir(workspace);
@@ -2073,6 +2093,25 @@ test("stop hook ignores a stale current-session worker when the review gate is d
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), "");
   assert.doesNotMatch(result.stderr, /task-stale is still running/i);
+});
+
+test("stop hook keeps an orphaned live turn active when its wrapper died", () => {
+  const repo = makeTempDir();
+  initGitRepo(repo);
+  fs.writeFileSync(path.join(repo, "README.md"), "hello\n");
+  run("git", ["add", "README.md"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+  const stateDir = resolveStateDir(repo);
+  fs.mkdirSync(path.join(stateDir, "jobs"), { recursive: true });
+  fs.writeFileSync(path.join(stateDir, "state.json"), `${JSON.stringify({ version: 1, config: { stopReviewGate: false }, jobs: [{ id: "task-orphan-turn", status: "running", title: "Codex Task", jobClass: "task", sessionId: "sess-current", pid: 999999, threadId: "thr_orphan", turnId: "turn_orphan", updatedAt: "2099-01-01T00:00:00.000Z" }] }, null, 2)}\n`, "utf8");
+  const result = run("node", [STOP_HOOK], {
+    cwd: repo,
+    env: { ...process.env, CODEX_COMPANION_SESSION_ID: "sess-current" },
+    input: JSON.stringify({ cwd: repo })
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "");
+  assert.match(result.stderr, /task-orphan-turn is still running/i);
 });
 
 test("stop hook allows the stop when the review gate is enabled and the stop-time review task is clean", () => {

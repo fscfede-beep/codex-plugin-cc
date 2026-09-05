@@ -42,6 +42,15 @@ export function reconcileJobLiveness(job, options = {}) {
       return job;
     }
     if (error?.code === "ESRCH") {
+      if (job.threadId && job.turnId) {
+        return {
+          ...job,
+          status: "running",
+          phase: "worker-exited-turn-unknown",
+          pid: null,
+          workerExited: true
+        };
+      }
       return { ...job, status: "terminated-unknown", phase: "worker-exited" };
     }
     return job;
